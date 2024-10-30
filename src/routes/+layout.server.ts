@@ -79,8 +79,9 @@ export const load: LayoutServerLoad = async ({ locals, depends }) => {
 
 	const messagesBeforeLogin = env.MESSAGES_BEFORE_LOGIN ? parseInt(env.MESSAGES_BEFORE_LOGIN) : 0;
 
-	let loginRequired = false;
+	const loginRequired = true;
 
+	/*
 	if (requiresUser && !locals.user && messagesBeforeLogin) {
 		if (conversations.length > messagesBeforeLogin) {
 			loginRequired = true;
@@ -102,7 +103,7 @@ export const load: LayoutServerLoad = async ({ locals, depends }) => {
 
 			loginRequired = totalMessages > messagesBeforeLogin;
 		}
-	}
+	}*/
 
 	const toolUseDuration = (await MetricsServer.getMetrics().tool.toolUseDuration.get()).values;
 
