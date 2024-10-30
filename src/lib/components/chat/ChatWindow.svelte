@@ -456,37 +456,6 @@
 			<div
 				class="mt-2 flex justify-between self-stretch px-1 text-xs text-gray-400/90 max-md:mb-2 max-sm:gap-2"
 			>
-				<p>
-					Model:
-					{#if !assistant}
-						{#if models.find((m) => m.id === currentModel.id)}
-							<a
-								href="{base}/settings/{currentModel.id}"
-								class="inline-flex items-center hover:underline"
-								>{currentModel.displayName}<CarbonCaretDown class="text-xxs" /></a
-							>
-						{:else}
-							<span class="inline-flex items-center line-through dark:border-gray-700">
-								{currentModel.id}
-							</span>
-						{/if}
-					{:else}
-						{@const model = models.find((m) => m.id === assistant?.modelId)}
-						{#if model}
-							<a
-								href="{base}/settings/assistants/{assistant._id}"
-								class="inline-flex items-center border-b hover:text-gray-600 dark:border-gray-700 dark:hover:text-gray-300"
-								>{model?.displayName}<CarbonCaretDown class="text-xxs" /></a
-							>
-						{:else}
-							<span class="inline-flex items-center line-through dark:border-gray-700">
-								{currentModel.id}
-							</span>
-						{/if}
-					{/if}
-					<span class="max-sm:hidden">·</span><br class="sm:hidden" /> Generated content may be inaccurate
-					or false.
-				</p>
 				{#if messages.length}
 					<button
 						class="flex flex-none items-center hover:text-gray-400 max-sm:rounded-lg max-sm:bg-gray-50 max-sm:px-2.5 dark:max-sm:bg-gray-800"
