@@ -77,33 +77,7 @@ export const load: LayoutServerLoad = async ({ locals, depends }) => {
 
 	const assistants = await collections.assistants.find({ _id: { $in: assistantIds } }).toArray();
 
-	const messagesBeforeLogin = env.MESSAGES_BEFORE_LOGIN ? parseInt(env.MESSAGES_BEFORE_LOGIN) : 0;
-
-	const loginRequired = true;
-
-	/*
-	if (requiresUser && !locals.user && messagesBeforeLogin) {
-		if (conversations.length > messagesBeforeLogin) {
-			loginRequired = true;
-		} else {
-			// get the number of messages where `from === "assistant"` across all conversations.
-			const totalMessages =
-				(
-					await collections.conversations
-						.aggregate([
-							{ $match: { ...authCondition(locals), "messages.from": "assistant" } },
-							{ $project: { messages: 1 } },
-							{ $limit: messagesBeforeLogin + 1 },
-							{ $unwind: "$messages" },
-							{ $match: { "messages.from": "assistant" } },
-							{ $count: "messages" },
-						])
-						.toArray()
-				)[0]?.messages ?? 0;
-
-			loginRequired = totalMessages > messagesBeforeLogin;
-		}
-	}*/
+	const loginRequired = requiresUser && !locals.user;
 
 	const toolUseDuration = (await MetricsServer.getMetrics().tool.toolUseDuration.get()).values;
 
@@ -247,6 +221,6 @@ export const load: LayoutServerLoad = async ({ locals, depends }) => {
 		enableCommunityTools: env.COMMUNITY_TOOLS === "true",
 		loginRequired,
 		loginEnabled: requiresUser,
-		guestMode: requiresUser && messagesBeforeLogin > 0,
+		guestMode: requiresUser,
 	};
 };
