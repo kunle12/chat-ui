@@ -112,6 +112,7 @@
 						</a>
 						{#if assistant.userCount && assistant.userCount > 1}
 							<span class="mx-1">·</span>
+							<!-- svelte-ignore node_invalid_placement_ssr -->
 							<div
 								class="inline-flex items-baseline gap-1 text-sm text-gray-400 dark:text-gray-500"
 								title="Number of users"

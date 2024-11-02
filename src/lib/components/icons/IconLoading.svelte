@@ -6,13 +6,13 @@
 	<div
 		class="h-1 w-1 flex-none animate-bounce rounded-full bg-gray-500 dark:bg-gray-400"
 		style="animation-delay: 0.25s;"
-	/>
+	></div>
 	<div
 		class="h-1 w-1 flex-none animate-bounce rounded-full bg-gray-500 dark:bg-gray-400"
 		style="animation-delay: 0.5s;"
-	/>
+	></div>
 	<div
 		class="h-1 w-1 flex-none animate-bounce rounded-full bg-gray-500 dark:bg-gray-400"
 		style="animation-delay: 0.75s;"
-	/>
+	></div>
 </div>

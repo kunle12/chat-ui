@@ -17,6 +17,6 @@
 				border-left-color: transparent;
 				border-right-color: transparent;
 			"
-	/>
+	></div>
 	{label}
 </div>

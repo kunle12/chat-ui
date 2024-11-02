@@ -90,7 +90,7 @@
 						? `data:${file.mime};base64,${file.value}`
 						: urlNotTrailing + "/output/" + file.value}
 					controls
-				/>
+				></video>
 			</div>
 		{:else if file.mime === "octet-stream"}
 			<div
@@ -136,6 +136,7 @@
 		{/if}
 		<!-- add a button on top that removes the image -->
 		{#if canClose}
+			<!-- svelte-ignore node_invalid_placement_ssr -->
 			<button
 				class="invisible absolute -right-2 -top-2 grid size-6 place-items-center rounded-full border bg-black group-hover:visible dark:border-gray-700"
 				on:click={() => dispatch("close")}

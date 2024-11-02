@@ -253,7 +253,7 @@
 					class="h-15 w-full rounded-lg border-2 border-gray-200 bg-gray-100 p-2"
 					placeholder="It knows everything about python"
 					value={assistant?.description ?? ""}
-				/>
+				></textarea>
 				<p class="text-xs text-red-500">{getError("description", form)}</p>
 			</label>
 
@@ -268,7 +268,7 @@
 						{#each models.filter((model) => !model.unlisted) as model}
 							<option value={model.id}>{model.displayName}</option>
 						{/each}
-						<p class="text-xs text-red-500">{getError("modelId", form)}</p>
+						<!-- <p class="text-xs text-red-500">{getError("modelId", form)}</p> -->
 					</select>
 					<button
 						type="button"
@@ -569,7 +569,7 @@
 					class="min-h-[8lh] flex-1 rounded-lg border-2 border-gray-200 bg-gray-100 p-2 text-sm"
 					placeholder="You'll act as..."
 					bind:value={systemPrompt}
-				/>
+				></textarea>
 				{#if modelId}
 					{@const model = models.find((_model) => _model.id === modelId)}
 					{#if model?.tokenizer && systemPrompt}

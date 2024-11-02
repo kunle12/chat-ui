@@ -229,7 +229,7 @@
 							{#each icons as icon}
 								<option value={icon}>{icon}</option>
 							{/each}
-							<p class="text-xs text-red-500">{getError("icon", form)}</p>
+							<!--<p class="text-xs text-red-500">{getError("icon", form)}</p>-->
 						</select>
 					</label>
 
@@ -244,7 +244,7 @@
 							{#each colors as color}
 								<option value={color}>{color}</option>
 							{/each}
-							<p class="text-xs text-red-500">{getError("color", form)}</p>
+							<!-- <p class="text-xs text-red-500">{getError("color", form)}</p> -->
 						</select>
 					</label>
 				</div>
@@ -261,7 +261,7 @@
 						class="w-full rounded-lg border-2 border-gray-200 bg-gray-100 p-2"
 						placeholder="This tool lets you generate images using SDXL."
 						bind:value={editableTool.description}
-					/>
+					></textarea>
 					<p class="text-xs text-red-500">{getError("description", form)}</p>
 				</label>
 
@@ -438,7 +438,7 @@
 													placeholder="This is the description of the input."
 													bind:value={input.description}
 													disabled={readonly}
-												/>
+												></textarea>
 											</label>
 										{/if}
 										{#if input.paramType === "optional" || input.paramType === "fixed"}
@@ -497,7 +497,7 @@
 										<!-- divider -->
 										<div
 											class="flex w-full flex-row flex-nowrap gap-2 border-b border-gray-200 pt-2"
-										/>
+										></div>
 									{/each}
 
 									<div class="flex flex-col gap-4">

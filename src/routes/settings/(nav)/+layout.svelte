@@ -161,7 +161,7 @@
 			</a>
 		{/if}
 
-		<div class="my-2 mt-auto w-full border-b border-gray-200" />
+		<div class="my-2 mt-auto w-full border-b border-gray-200"></div>
 		<a
 			href="{base}/settings"
 			class="group flex h-10 flex-none items-center gap-2 pl-3 pr-2 text-sm text-gray-500 hover:bg-gray-100 max-md:order-first md:rounded-xl

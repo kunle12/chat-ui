@@ -98,4 +98,4 @@
 	{currentModel}
 	models={data.models}
 	bind:files
-/>
+></ChatWindow>

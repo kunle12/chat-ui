@@ -152,7 +152,8 @@
 		[]) as MessageWebSearchUpdate[];
 
 	$: messageFinalAnswer = message.updates?.find(
-		({ type }) => type === MessageUpdateType.FinalAnswer
+		// svelte-ignore reactive_declaration_non_reactive_property
+				({ type }) => type === MessageUpdateType.FinalAnswer
 	) as MessageFinalAnswerUpdate;
 
 	// filter all updates with type === "tool" then group them by uuid field
@@ -172,13 +173,15 @@
 
 	let webSearchIsDone = true;
 
+	// svelte-ignore reactive_declaration_non_reactive_property
 	$: webSearchIsDone = searchUpdates.some(
-		(update) => update.subtype === MessageWebSearchUpdateType.Finished
+				(update) => update.subtype === MessageWebSearchUpdateType.Finished
 	);
 
+	// svelte-ignore reactive_declaration_non_reactive_property
 	$: webSearchSources = searchUpdates?.find(
 		(update): update is MessageWebSearchSourcesUpdate =>
-			update.subtype === MessageWebSearchUpdateType.Sources
+						update.subtype === MessageWebSearchUpdateType.Sources
 	)?.sources;
 
 	$: if (isCopied) {
@@ -232,6 +235,54 @@
 	}
 	$: if (message.children?.length === 0) $convTreeStore.leaf = message.id;
 </script>
+
+{#snippet childrenNav()}
+{#if nChildren > 1 && $convTreeStore.editing === null}
+	<div
+		class="font-white group/navbranch z-10 -mt-1 ml-3.5 mr-auto flex h-6 w-fit select-none flex-row items-center justify-center gap-1 text-sm"
+	>
+		<button
+			class="inline text-lg font-thin text-gray-400 hover:text-gray-800 disabled:pointer-events-none disabled:opacity-25 dark:text-gray-500 dark:hover:text-gray-200"
+			on:click={() => (childrenToRender = Math.max(0, childrenToRender - 1))}
+			disabled={childrenToRender === 0 || loading}
+		>
+			<CarbonChevronLeft class="text-sm" />
+		</button>
+		<span class=" text-gray-400 dark:text-gray-500">
+			{childrenToRender + 1} / {nChildren}
+		</span>
+		<button
+			class="inline text-lg font-thin text-gray-400 hover:text-gray-800 disabled:pointer-events-none disabled:opacity-25 dark:text-gray-500 dark:hover:text-gray-200"
+			on:click={() =>
+				(childrenToRender = Math.min(
+					message?.children?.length ?? 1 - 1,
+					childrenToRender + 1
+				))}
+			disabled={childrenToRender === nChildren - 1 || loading}
+		>
+			<CarbonChevronRight class="text-sm" />
+		</button>
+		{#if !loading && message.children}<form
+				method="POST"
+				action="?/deleteBranch"
+				class="hidden group-hover/navbranch:block"
+				use:enhance={({ cancel }) => {
+					if (!confirm("Are you sure you want to delete this branch?")) {
+						cancel();
+					}
+				}}
+			>
+				<input name="messageId" value={message.children[childrenToRender]} type="hidden" />
+				<button
+					class="flex items-center justify-center text-xs text-gray-400 hover:text-gray-800 dark:text-gray-500 dark:hover:text-gray-200"
+					type="submit"
+					><CarbonTrashCan />
+				</button>
+			</form>
+		{/if}
+	</div>
+{/if}
+{/snippet}
 
 {#if message.from === "assistant"}
 	<div
@@ -396,7 +447,7 @@
 			</div>
 		{/if}
 	</div>
-	<slot name="childrenNav" />
+	{@render childrenNav()}
 {/if}
 {#if message.from === "user"}
 	<div
@@ -438,7 +489,7 @@
 							value={message.content.trim()}
 							on:keydown={handleKeyDown}
 							required
-						/>
+						></textarea>
 						<div class="flex w-full flex-row flex-nowrap items-center justify-center gap-2 pt-2">
 							<button
 								type="submit"
@@ -498,7 +549,7 @@
 					</div>
 				{/if}
 			</div>
-			<slot name="childrenNav" />
+			{@render childrenNav()}
 		</div>
 	</div>
 {/if}
@@ -515,53 +566,7 @@
 		on:vote
 		on:continue
 	>
-		<svelte:fragment slot="childrenNav">
-			{#if nChildren > 1 && $convTreeStore.editing === null}
-				<div
-					class="font-white group/navbranch z-10 -mt-1 ml-3.5 mr-auto flex h-6 w-fit select-none flex-row items-center justify-center gap-1 text-sm"
-				>
-					<button
-						class="inline text-lg font-thin text-gray-400 hover:text-gray-800 disabled:pointer-events-none disabled:opacity-25 dark:text-gray-500 dark:hover:text-gray-200"
-						on:click={() => (childrenToRender = Math.max(0, childrenToRender - 1))}
-						disabled={childrenToRender === 0 || loading}
-					>
-						<CarbonChevronLeft class="text-sm" />
-					</button>
-					<span class=" text-gray-400 dark:text-gray-500">
-						{childrenToRender + 1} / {nChildren}
-					</span>
-					<button
-						class="inline text-lg font-thin text-gray-400 hover:text-gray-800 disabled:pointer-events-none disabled:opacity-25 dark:text-gray-500 dark:hover:text-gray-200"
-						on:click={() =>
-							(childrenToRender = Math.min(
-								message?.children?.length ?? 1 - 1,
-								childrenToRender + 1
-							))}
-						disabled={childrenToRender === nChildren - 1 || loading}
-					>
-						<CarbonChevronRight class="text-sm" />
-					</button>
-					{#if !loading && message.children}<form
-							method="POST"
-							action="?/deleteBranch"
-							class="hidden group-hover/navbranch:block"
-							use:enhance={({ cancel }) => {
-								if (!confirm("Are you sure you want to delete this branch?")) {
-									cancel();
-								}
-							}}
-						>
-							<input name="messageId" value={message.children[childrenToRender]} type="hidden" />
-							<button
-								class="flex items-center justify-center text-xs text-gray-400 hover:text-gray-800 dark:text-gray-500 dark:hover:text-gray-200"
-								type="submit"
-								><CarbonTrashCan />
-							</button>
-						</form>
-					{/if}
-				</div>
-			{/if}
-		</svelte:fragment>
+		{@render childrenNav()}
 	</svelte:self>
 {/if}
 

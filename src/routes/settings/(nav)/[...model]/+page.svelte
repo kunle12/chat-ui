@@ -133,7 +133,7 @@
 			rows="10"
 			class="w-full resize-none rounded-md border-2 bg-gray-100 p-2"
 			bind:value={$settings.customPrompts[$page.params.model]}
-		/>
+		></textarea>
 		{#if model.tokenizer && $settings.customPrompts[$page.params.model]}
 			<TokensCounter
 				classNames="absolute bottom-2 right-2"

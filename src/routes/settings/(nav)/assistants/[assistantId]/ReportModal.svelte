@@ -34,7 +34,7 @@
 			placeholder="Reason(s) for the report"
 			maxlength="128"
 			bind:value={reason}
-		/>
+		></textarea>
 
 		<div class="flex w-full flex-row justify-between px-2 pt-4">
 			<button

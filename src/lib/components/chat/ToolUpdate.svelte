@@ -19,6 +19,7 @@
 	$: toolError = tool.some(isMessageToolErrorUpdate);
 	$: toolDone = tool.some(isMessageToolResultUpdate);
 
+	// svelte-ignore reactive_declaration_non_reactive_property
 	$: eta = tool.find((el) => el.subtype === MessageToolUpdateType.ETA)?.eta;
 
 	const availableTools: ToolFront[] = $page.data.tools;
@@ -84,7 +85,7 @@
 			<div
 				bind:this={loadingBarEl}
 				class="absolute -m-1 hidden h-full w-[calc(100%+1rem)] rounded-lg bg-purple-500/5 transition-all dark:bg-purple-500/10"
-			/>
+			></div>
 
 			<div
 				class="relative grid size-[22px] place-items-center rounded bg-purple-600/10 dark:bg-purple-600/20"
@@ -122,7 +123,7 @@
 			{#if toolUpdate.subtype === MessageToolUpdateType.Call}
 				<div class="mt-1 flex items-center gap-2 opacity-80">
 					<h3 class="text-sm">Parameters</h3>
-					<div class="h-px flex-1 bg-gradient-to-r from-gray-500/20" />
+					<div class="h-px flex-1 bg-gradient-to-r from-gray-500/20"></div>
 				</div>
 				<ul class="py-1 text-sm">
 					{#each Object.entries(toolUpdate.call.parameters ?? {}) as [k, v]}
@@ -137,13 +138,13 @@
 			{:else if toolUpdate.subtype === MessageToolUpdateType.Error}
 				<div class="mt-1 flex items-center gap-2 opacity-80">
 					<h3 class="text-sm">Error</h3>
-					<div class="h-px flex-1 bg-gradient-to-r from-gray-500/20" />
+					<div class="h-px flex-1 bg-gradient-to-r from-gray-500/20"></div>
 				</div>
 				<p class="text-sm">{toolUpdate.message}</p>
 			{:else if isMessageToolResultUpdate(toolUpdate) && toolUpdate.result.status === ToolResultStatus.Success && toolUpdate.result.display}
 				<div class="mt-1 flex items-center gap-2 opacity-80">
 					<h3 class="text-sm">Result</h3>
-					<div class="h-px flex-1 bg-gradient-to-r from-gray-500/20" />
+					<div class="h-px flex-1 bg-gradient-to-r from-gray-500/20"></div>
 				</div>
 				<ul class="py-1 text-sm">
 					{#each toolUpdate.result.outputs as output}

@@ -13,11 +13,13 @@
 	export let webSearchMessages: MessageWebSearchUpdate[] = [];
 
 	$: sources = webSearchMessages.find(isMessageWebSearchSourcesUpdate)?.sources;
+	// svelte-ignore reactive_declaration_non_reactive_property
 	$: lastMessage = webSearchMessages
-		.filter((update) => update.subtype !== MessageWebSearchUpdateType.Sources)
+								.filter((update) => update.subtype !== MessageWebSearchUpdateType.Sources)
 		.at(-1) as MessageWebSearchUpdate;
+	// svelte-ignore reactive_declaration_non_reactive_property
 	$: errored = webSearchMessages.some(
-		(update) => update.subtype === MessageWebSearchUpdateType.Error
+				(update) => update.subtype === MessageWebSearchUpdateType.Error
 	);
 	$: loading = !sources && !errored;
 </script>
@@ -77,7 +79,7 @@
 									class="-ml-1.5 h-3 w-3 flex-none rounded-full bg-gray-200 dark:bg-gray-600 {loading
 										? 'group-last:animate-pulse group-last:bg-gray-300 group-last:dark:bg-gray-500'
 										: ''}"
-								/>
+								></div>
 								<h3 class="text-md -mt-1.5 pl-2.5 text-gray-800 dark:text-gray-100">
 									{message.message}
 								</h3>

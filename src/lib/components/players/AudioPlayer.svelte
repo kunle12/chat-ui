@@ -42,7 +42,7 @@
 		on:ended={() => {
 			time = 0;
 		}}
-	/>
+	></audio>
 
 	<button
 		class="mx-auto my-auto aspect-square size-8 rounded-full border border-gray-400 bg-gray-100 dark:border-gray-800 dark:bg-gray-700"
@@ -70,7 +70,7 @@
 					<div
 						class="absolute inset-0 h-full bg-gray-400 dark:bg-gray-600"
 						style="width: {(time / duration) * 100}%"
-					/>
+					></div>
 				</div>
 				<span class="text-xs">{duration ? format(duration) : "--:--"}</span>
 			</div>

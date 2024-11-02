@@ -30,7 +30,7 @@
 				disabled
 				value={preprompt}
 				class="min-h-[420px] w-full resize-none rounded-lg border bg-gray-50 p-2.5 text-gray-600 max-sm:text-sm"
-			/>
+			></textarea>
 		</div>
 	</Modal>
 {/if}

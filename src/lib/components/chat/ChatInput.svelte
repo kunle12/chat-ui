@@ -75,7 +75,7 @@
 		on:compositionend={() => (isCompositionOn = false)}
 		on:beforeinput
 		{placeholder}
-	/>
+	></textarea>
 </div>
 
 <style>
