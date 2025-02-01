@@ -10,10 +10,17 @@
 	import type { ConvSidebar } from "$lib/types/ConvSidebar";
 	import type { Model } from "$lib/types/Model";
 	import { page } from "$app/stores";
+	import InfiniteScroll from "./InfiniteScroll.svelte";
+	import type { Conversation } from "$lib/types/Conversation";
+	import { CONV_NUM_PER_PAGE } from "$lib/constants/pagination";
 
-	export let conversations: ConvSidebar[] = [];
+	export let conversations: ConvSidebar[];
 	export let canLogin: boolean;
 	export let user: LayoutData["user"];
+
+	export let p = 0;
+
+	let hasMore = true;
 
 	function handleNewChatClick() {
 		isAborted.set(true);
@@ -44,9 +51,36 @@
 	} as const;
 
 	const nModels: number = $page.data.models.filter((el: Model) => !el.unlisted).length;
+
+	async function handleVisible() {
+		p++;
+		const newConvs = await fetch(`${base}/api/conversations?p=${p}`)
+			.then((res) => res.json())
+			.then((convs) =>
+				convs.map(
+					(conv: Pick<Conversation, "_id" | "title" | "updatedAt" | "model" | "assistantId">) => ({
+						...conv,
+						updatedAt: new Date(conv.updatedAt),
+					})
+				)
+			)
+			.catch(() => []);
+
+		if (newConvs.length === 0) {
+			hasMore = false;
+		}
+
+		conversations = [...conversations, ...newConvs];
+	}
+
+	$: if (conversations.length <= CONV_NUM_PER_PAGE) {
+		// reset p to 0 if there's only one page of content
+		// that would be caused by a data loading invalidation
+		p = 0;
+	}
 </script>
 
-<div class="sticky top-0 flex flex-none items-center justify-between px-3 py-3.5 max-sm:pt-0">
+<div class="sticky top-0 flex flex-none items-center justify-between px-1.5 py-3.5 max-sm:pt-0">
 	<a
 		class="flex items-center rounded-xl text-lg font-semibold"
 		href="{envPublic.PUBLIC_ORIGIN}{base}/"
@@ -65,16 +99,34 @@
 <div
 	class="scrollbar-custom flex flex-col gap-1 overflow-y-auto rounded-r-xl from-gray-50 px-3 pb-3 pt-2 text-[.9rem] dark:from-gray-800/30 max-sm:bg-gradient-to-t md:bg-gradient-to-l"
 >
-	{#each Object.entries(groupedConversations) as [group, convs]}
-		{#if convs.length}
-			<h4 class="mb-1.5 mt-4 pl-0.5 text-sm text-gray-400 first:mt-0 dark:text-gray-500">
-				{titles[group]}
-			</h4>
-			{#each convs as conv}
-				<NavConversationItem on:editConversationTitle on:deleteConversation {conv} />
-			{/each}
+	{#await groupedConversations}
+		{#if $page.data.nConversations > 0}
+			<div class="overflow-y-hidden">
+				<div class="flex animate-pulse flex-col gap-4">
+					<div class="h-4 w-24 rounded bg-gray-200 dark:bg-gray-700" />
+					{#each Array(100) as _}
+						<div class="ml-2 h-5 w-4/5 gap-5 rounded bg-gray-200 dark:bg-gray-700" />
+					{/each}
+				</div>
+			</div>
 		{/if}
-	{/each}
+	{:then groupedConversations}
+		<div class="flex flex-col gap-1">
+			{#each Object.entries(groupedConversations) as [group, convs]}
+				{#if convs.length}
+					<h4 class="mb-1.5 mt-4 pl-0.5 text-sm text-gray-400 first:mt-0 dark:text-gray-500">
+						{titles[group]}
+					</h4>
+					{#each convs as conv}
+						<NavConversationItem on:editConversationTitle on:deleteConversation {conv} />
+					{/each}
+				{/if}
+			{/each}
+		</div>
+		{#if hasMore}
+			<InfiniteScroll on:visible={handleVisible} />
+		{/if}
+	{/await}
 </div>
 <div
 	class="mt-0.5 flex flex-col gap-1 rounded-r-xl p-3 text-sm md:bg-gradient-to-l md:from-gray-50 md:dark:from-gray-800/30"

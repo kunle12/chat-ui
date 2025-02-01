@@ -2,9 +2,7 @@
 	import type { Message, MessageFile } from "$lib/types/Message";
 	import { createEventDispatcher, onDestroy, tick } from "svelte";
 
-	import CarbonSendAltFilled from "~icons/carbon/send-alt-filled";
 	import CarbonExport from "~icons/carbon/export";
-	import CarbonStopFilledAlt from "~icons/carbon/stop-filled-alt";
 	import CarbonCheckmark from "~icons/carbon/checkmark";
 	import CarbonCaretDown from "~icons/carbon/caret-down";
 
@@ -13,13 +11,9 @@
 	import ChatInput from "./ChatInput.svelte";
 	import StopGeneratingBtn from "../StopGeneratingBtn.svelte";
 	import type { Model } from "$lib/types/Model";
-	import WebSearchToggle from "../WebSearchToggle.svelte";
-	import ToolsMenu from "../ToolsMenu.svelte";
-	import LoginModal from "../LoginModal.svelte";
 	import { page } from "$app/stores";
 	import FileDropzone from "./FileDropzone.svelte";
 	import RetryBtn from "../RetryBtn.svelte";
-	import UploadBtn from "../UploadBtn.svelte";
 	import file2base64 from "$lib/utils/file2base64";
 	import type { Assistant } from "$lib/types/Assistant";
 	import { base } from "$app/paths";
@@ -35,8 +29,12 @@
 	import { useConvTreeStore } from "$lib/stores/convTree";
 	import UploadedFile from "./UploadedFile.svelte";
 	import { useSettingsStore } from "$lib/stores/settings";
-	import type { ToolFront } from "$lib/types/Tool";
 	import ModelSwitch from "./ModelSwitch.svelte";
+
+	import { fly } from "svelte/transition";
+	import { cubicInOut } from "svelte/easing";
+	import type { ToolFront } from "$lib/types/Tool";
+	import { loginModalOpen } from "$lib/stores/loginModal";
 
 	export let messages: Message[] = [];
 	export let loading = false;
@@ -51,10 +49,10 @@
 
 	$: isReadOnly = !models.some((model) => model.id === currentModel.id);
 
-	let loginModalOpen = false;
 	let message: string;
 	let timeout: ReturnType<typeof setTimeout>;
 	let isSharedRecently = false;
+	$: pastedLongContent = false;
 	$: $page.params.id && (isSharedRecently = false);
 
 	const dispatch = createEventDispatcher<{
@@ -86,6 +84,21 @@
 	};
 
 	const onPaste = (e: ClipboardEvent) => {
+		const textContent = e.clipboardData?.getData("text");
+
+		if (!$settings.directPaste && textContent && textContent.length >= 3984) {
+			e.preventDefault();
+			pastedLongContent = true;
+			setTimeout(() => {
+				pastedLongContent = false;
+			}, 1000);
+			const pastedFile = new File([textContent], "Pasted Content", {
+				type: "application/vnd.chatui.clipboard",
+			});
+
+			files = [...files, pastedFile];
+		}
+
 		if (!e.clipboardData) {
 			return;
 		}
@@ -205,18 +218,25 @@
 
 	const settings = useSettingsStore();
 
-	// active tools are all the checked tools, either from settings or on by default
-	$: activeTools = $page.data.tools.filter((tool: ToolFront) => {
-		if ($page.data?.assistant) {
-			return $page.data.assistant.tools?.includes(tool._id);
-		}
-		return $settings?.tools?.includes(tool._id) ?? tool.isOnByDefault;
-	});
-	$: activeMimeTypes = [
-		...(currentModel.tools ? activeTools.flatMap((tool: ToolFront) => tool.mimeTypes ?? []) : []),
-		...(currentModel.multimodal ? currentModel.multimodalAcceptedMimetypes ?? ["image/*"] : []),
-	];
+	$: mimeTypesFromActiveTools = $page.data.tools
+		.filter((tool: ToolFront) => {
+			if ($page.data?.assistant) {
+				return $page.data.assistant.tools?.includes(tool._id);
+			}
+			if (currentModel.tools) {
+				return $settings?.tools?.includes(tool._id) ?? tool.isOnByDefault;
+			}
+			return false;
+		})
+		.flatMap((tool: ToolFront) => tool.mimeTypes ?? []);
 
+	$: activeMimeTypes = Array.from(
+		new Set([
+			...mimeTypesFromActiveTools, // fetch mime types from active tools either from tool settings or active assistant
+			...(currentModel.tools && !$page.data.assistant ? ["application/pdf"] : []), // if its a tool model, we can always enable document parser so we always accept pdfs
+			...(currentModel.multimodal ? currentModel.multimodalAcceptedMimetypes ?? ["image/*"] : []), // if its a multimodal model, we always accept images
+		])
+	);
 	$: isFileUploadEnabled = activeMimeTypes.length > 0;
 </script>
 
@@ -228,13 +248,6 @@
 />
 
 <div class="relative min-h-0 min-w-0">
-	{#if loginModalOpen}
-		<LoginModal
-			on:close={() => {
-				loginModalOpen = false;
-			}}
-		/>
-	{/if}
 	<div
 		class="scrollbar-custom h-full overflow-y-auto"
 		use:snapScrollToBottom={messages.length ? [...messages] : false}
@@ -277,7 +290,6 @@
 						id={messages[0].id}
 						isAuthor={!shared}
 						readOnly={isReadOnly}
-						model={currentModel}
 						on:retry
 						on:vote
 						on:continue
@@ -300,7 +312,6 @@
 					id={"0-0-0-0-0"}
 					isAuthor={!shared}
 					readOnly={isReadOnly}
-					model={currentModel}
 				/>
 			{:else if !assistant}
 				<ChatIntroduction
@@ -308,7 +319,7 @@
 					on:message={(ev) => {
 						if ($page.data.loginRequired) {
 							ev.preventDefault();
-							loginModalOpen = true;
+							$loginModalOpen = true;
 						} else {
 							dispatch("message", ev.detail);
 						}
@@ -321,7 +332,7 @@
 					on:message={(ev) => {
 						if ($page.data.loginRequired) {
 							ev.preventDefault();
-							loginModalOpen = true;
+							$loginModalOpen = true;
 						} else {
 							dispatch("message", ev.detail);
 						}
@@ -344,7 +355,10 @@
 		class="dark:via-gray-80 pointer-events-none absolute inset-x-0 bottom-0 z-0 mx-auto flex w-full max-w-3xl flex-col items-center justify-center bg-gradient-to-t from-white via-white/80 to-white/0 px-3.5 py-4 dark:border-gray-800 dark:from-gray-900 dark:to-gray-900/0 max-md:border-t max-md:bg-white max-md:dark:bg-gray-900 sm:px-5 md:py-8 xl:max-w-4xl [&>*]:pointer-events-auto"
 	>
 		{#if sources?.length && !loading}
-			<div class="flex flex-row flex-wrap justify-center gap-2.5 max-md:pb-3">
+			<div
+				in:fly|local={sources.length === 1 ? { y: -20, easing: cubicInOut } : undefined}
+				class="flex flex-row flex-wrap justify-center gap-2.5 rounded-xl max-md:pb-3"
+			>
 				{#each sources as source, index}
 					{#await source then src}
 						<UploadedFile
@@ -359,14 +373,7 @@
 		{/if}
 
 		<div class="w-full">
-			<div class="flex w-full pb-3">
-				{#if !assistant}
-					{#if currentModel.tools}
-						<ToolsMenu {loading} />
-					{:else if $page.data.settings?.searchEnabled}
-						<WebSearchToggle />
-					{/if}
-				{/if}
+			<div class="flex w-full *:mb-3">
 				{#if loading}
 					<StopGeneratingBtn classNames="ml-auto" on:click={() => dispatch("stop")} />
 				{:else if lastIsError}
@@ -380,22 +387,17 @@
 							}
 						}}
 					/>
-				{:else}
+				{:else if messages && lastMessage && lastMessage.interrupted && !isReadOnly}
 					<div class="ml-auto gap-2">
-						{#if isFileUploadEnabled}
-							<UploadBtn bind:files mimeTypes={activeMimeTypes} classNames="ml-auto" />
-						{/if}
-						{#if messages && lastMessage && lastMessage.interrupted && !isReadOnly}
-							<ContinueBtn
-								on:click={() => {
-									if (lastMessage && lastMessage.ancestors) {
-										dispatch("continue", {
-											id: lastMessage?.id,
-										});
-									}
-								}}
-							/>
-						{/if}
+						<ContinueBtn
+							on:click={() => {
+								if (lastMessage && lastMessage.ancestors) {
+									dispatch("continue", {
+										id: lastMessage?.id,
+									});
+								}
+							}}
+						/>
 					</div>
 				{/if}
 			</div>
@@ -403,51 +405,69 @@
 				tabindex="-1"
 				aria-label={isFileUploadEnabled ? "file dropzone" : undefined}
 				on:submit|preventDefault={handleSubmit}
-				class="relative flex w-full max-w-4xl flex-1 items-center rounded-xl border bg-gray-100 focus-within:border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:focus-within:border-gray-500
+				class="relative flex w-full max-w-4xl flex-1 items-center rounded-xl border bg-gray-100 dark:border-gray-600 dark:bg-gray-700
             {isReadOnly ? 'opacity-30' : ''}"
 			>
 				{#if onDrag && isFileUploadEnabled}
 					<FileDropzone bind:files bind:onDrag mimeTypes={activeMimeTypes} />
 				{:else}
-					<div class="flex w-full flex-1 border-none bg-transparent">
+					<div
+						class="flex w-full flex-1 rounded-xl border-none bg-transparent"
+						class:paste-glow={pastedLongContent}
+					>
 						{#if lastIsError}
 							<ChatInput value="Sorry, something went wrong. Please try again." disabled={true} />
 						{:else}
 							<ChatInput
+								{assistant}
 								placeholder={isReadOnly ? "This conversation is read-only." : "Ask anything"}
+								{loading}
 								bind:value={message}
+								bind:files
+								mimeTypes={activeMimeTypes}
 								on:submit={handleSubmit}
 								on:beforeinput={(ev) => {
 									if ($page.data.loginRequired) {
 										ev.preventDefault();
-										loginModalOpen = true;
+										$loginModalOpen = true;
 									}
 								}}
 								on:paste={onPaste}
-								maxRows={6}
 								disabled={isReadOnly || lastIsError}
+								modelHasTools={currentModel.tools}
+								modelIsMultimodal={currentModel.multimodal}
 							/>
 						{/if}
 
 						{#if loading}
 							<button
-								class="btn mx-1 my-1 inline-block h-[2.4rem] self-end rounded-lg bg-transparent p-1 px-[0.7rem] text-gray-400 enabled:hover:text-gray-700 disabled:opacity-60 enabled:dark:hover:text-gray-100 dark:disabled:opacity-40 md:hidden"
-								on:click={() => dispatch("stop")}
-							>
-								<CarbonStopFilledAlt />
-							</button>
-							<div
-								class="mx-1 my-1 hidden h-[2.4rem] items-center p-1 px-[0.7rem] text-gray-400 enabled:hover:text-gray-700 disabled:opacity-60 enabled:dark:hover:text-gray-100 dark:disabled:opacity-40 md:flex"
+								disabled
+								class="btn absolute bottom-1 right-0.5 size-10 self-end rounded-lg bg-transparent text-gray-400"
 							>
 								<EosIconsLoading />
-							</div>
+							</button>
 						{:else}
 							<button
-								class="btn mx-1 my-1 h-[2.4rem] self-end rounded-lg bg-transparent p-1 px-[0.7rem] text-gray-400 enabled:hover:text-gray-700 disabled:opacity-60 enabled:dark:hover:text-gray-100 dark:disabled:opacity-40"
+								class="btn absolute bottom-2 right-2 size-7 self-end rounded-full border bg-white text-black shadow transition-none enabled:hover:bg-white enabled:hover:shadow-inner disabled:opacity-60 dark:border-gray-600 dark:bg-gray-900 dark:text-white dark:hover:enabled:bg-black"
 								disabled={!message || isReadOnly}
 								type="submit"
+								aria-label="Send message"
+								name="submit"
 							>
-								<CarbonSendAltFilled />
+								<svg
+									width="1em"
+									height="1em"
+									viewBox="0 0 32 32"
+									fill="none"
+									xmlns="http://www.w3.org/2000/svg"
+								>
+									<path
+										fill-rule="evenodd"
+										clip-rule="evenodd"
+										d="M17.0606 4.23197C16.4748 3.64618 15.525 3.64618 14.9393 4.23197L5.68412 13.4871C5.09833 14.0729 5.09833 15.0226 5.68412 15.6084C6.2699 16.1942 7.21965 16.1942 7.80544 15.6084L14.4999 8.91395V26.7074C14.4999 27.5359 15.1715 28.2074 15.9999 28.2074C16.8283 28.2074 17.4999 27.5359 17.4999 26.7074V8.91395L24.1944 15.6084C24.7802 16.1942 25.7299 16.1942 26.3157 15.6084C26.9015 15.0226 26.9015 14.0729 26.3157 13.4871L17.0606 4.23197Z"
+										fill="currentColor"
+									/>
+								</svg>
 							</button>
 						{/if}
 					</div>
@@ -477,3 +497,22 @@
 		</div>
 	</div>
 </div>
+
+<style lang="postcss">
+	.paste-glow {
+		animation: glow 1s cubic-bezier(0.4, 0, 0.2, 1) forwards;
+		will-change: box-shadow;
+	}
+
+	@keyframes glow {
+		0% {
+			box-shadow: 0 0 0 0 rgba(59, 130, 246, 0.8);
+		}
+		50% {
+			box-shadow: 0 0 20px 4px rgba(59, 130, 246, 0.6);
+		}
+		100% {
+			box-shadow: 0 0 0 0 rgba(59, 130, 246, 0);
+		}
+	}
+</style>

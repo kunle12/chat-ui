@@ -1,12 +1,9 @@
 <script lang="ts">
-	import { marked, type MarkedOptions } from "marked";
-	import markedKatex from "marked-katex-extension";
 	import type { Message } from "$lib/types/Message";
 	import { afterUpdate, createEventDispatcher, tick } from "svelte";
 	import { deepestChild } from "$lib/utils/deepestChild";
 	import { page } from "$app/stores";
 
-	import CodeBlock from "../CodeBlock.svelte";
 	import CopyToClipBoardBtn from "../CopyToClipBoardBtn.svelte";
 	import IconLoading from "../icons/IconLoading.svelte";
 	import CarbonRotate360 from "~icons/carbon/rotate-360";
@@ -17,8 +14,6 @@
 	import CarbonPen from "~icons/carbon/pen";
 	import CarbonChevronLeft from "~icons/carbon/chevron-left";
 	import CarbonChevronRight from "~icons/carbon/chevron-right";
-	import { PUBLIC_SEP_TOKEN } from "$lib/constants/publicSepToken";
-	import type { Model } from "$lib/types/Model";
 	import UploadedFile from "./UploadedFile.svelte";
 
 	import OpenWebSearchResults from "../OpenWebSearchResults.svelte";
@@ -29,40 +24,18 @@
 		type MessageWebSearchSourcesUpdate,
 		type MessageWebSearchUpdate,
 		type MessageFinalAnswerUpdate,
+		type MessageReasoningUpdate,
+		MessageReasoningUpdateType,
 	} from "$lib/types/MessageUpdate";
 	import { base } from "$app/paths";
 	import { useConvTreeStore } from "$lib/stores/convTree";
 	import ToolUpdate from "./ToolUpdate.svelte";
 	import { useSettingsStore } from "$lib/stores/settings";
-	import DOMPurify from "isomorphic-dompurify";
 	import { enhance } from "$app/forms";
 	import { browser } from "$app/environment";
+	import MarkdownRenderer from "./MarkdownRenderer.svelte";
+	import OpenReasoningResults from "./OpenReasoningResults.svelte";
 
-	function sanitizeMd(md: string) {
-		let ret = md
-			.replace(/<\|[a-z]*$/, "")
-			.replace(/<\|[a-z]+\|$/, "")
-			.replace(/<$/, "")
-			.replaceAll(PUBLIC_SEP_TOKEN, " ")
-			.replaceAll(/<\|[a-z]+\|>/g, " ")
-			.replaceAll(/<br\s?\/?>/gi, "\n")
-			.replaceAll("<", "&lt;")
-			.trim();
-
-		for (const stop of [...(model.parameters?.stop ?? []), "<|endoftext|>"]) {
-			if (ret.endsWith(stop)) {
-				ret = ret.slice(0, -stop.length).trim();
-			}
-		}
-
-		return ret;
-	}
-
-	function unsanitizeMd(md: string) {
-		return md.replaceAll("&lt;", "<");
-	}
-
-	export let model: Model;
 	export let id: Message["id"];
 	export let messages: Message[];
 	export let loading = false;
@@ -85,36 +58,6 @@
 	let isCopied = false;
 
 	let initialized = false;
-	const renderer = new marked.Renderer();
-	// For code blocks with simple backticks
-	renderer.codespan = (code) => {
-		// Unsanitize double-sanitized code
-		return `<code>${code.replaceAll("&amp;", "&")}</code>`;
-	};
-
-	renderer.link = (href, title, text) => {
-		return `<a href="${href?.replace(/>$/, "")}" target="_blank" rel="noreferrer">${text}</a>`;
-	};
-
-	// eslint-disable-next-line @typescript-eslint/no-unused-vars
-	const { extensions, ...defaults } = marked.getDefaults() as MarkedOptions & {
-		// eslint-disable-next-line @typescript-eslint/no-explicit-any
-		extensions: any;
-	};
-	const options: MarkedOptions = {
-		...defaults,
-		gfm: true,
-		breaks: true,
-		renderer,
-	};
-
-	marked.use(
-		markedKatex({
-			throwOnError: false,
-		})
-	);
-
-	$: tokens = marked.lexer(sanitizeMd(message.content ?? ""));
 
 	$: emptyLoad =
 		!message.content && (webSearchIsDone || (searchUpdates && searchUpdates.length === 0));
@@ -148,8 +91,12 @@
 		}
 	}
 
-	$: searchUpdates = (message.updates?.filter(({ type }) => type === "webSearch") ??
+	$: searchUpdates = (message.updates?.filter(({ type }) => type === MessageUpdateType.WebSearch) ??
 		[]) as MessageWebSearchUpdate[];
+
+	$: reasoningUpdates = (message.updates?.filter(
+		({ type }) => type === MessageUpdateType.Reasoning
+	) ?? []) as MessageReasoningUpdate[];
 
 	$: messageFinalAnswer = message.updates?.find(
 		// svelte-ignore reactive_declaration_non_reactive_property
@@ -287,7 +234,8 @@
 {#if message.from === "assistant"}
 	<div
 		class="group relative -mb-4 flex items-start justify-start gap-4 pb-4 leading-relaxed"
-		id="message-assistant-{message.id}"
+		data-message-id={message.id}
+		data-message-role="assistant"
 		role="presentation"
 		on:click={() => (isTapped = !isTapped)}
 		on:keydown={() => (isTapped = !isTapped)}
@@ -311,14 +259,22 @@
 			{#if message.files?.length}
 				<div class="flex h-fit flex-wrap gap-x-5 gap-y-2">
 					{#each message.files as file}
-						<UploadedFile {file} canClose={false} isPreview={false} />
+						<UploadedFile {file} canClose={false} />
 					{/each}
 				</div>
 			{/if}
 			{#if searchUpdates && searchUpdates.length > 0}
-				<OpenWebSearchResults
-					classNames={tokens.length ? "mb-3.5" : ""}
-					webSearchMessages={searchUpdates}
+				<OpenWebSearchResults webSearchMessages={searchUpdates} />
+			{/if}
+			{#if reasoningUpdates && reasoningUpdates.length > 0 && message.reasoning && message.reasoning.trim().length > 0}
+				{@const summaries = reasoningUpdates
+					.filter((u) => u.subtype === MessageReasoningUpdateType.Status)
+					.map((u) => u.status)}
+
+				<OpenReasoningResults
+					summary={summaries[summaries.length - 1] || ""}
+					content={message.reasoning || ""}
+					loading={loading && message.content.length === 0}
 				/>
 			{/if}
 
@@ -333,22 +289,18 @@
 			{/if}
 
 			<div
-				class="prose max-w-none dark:prose-invert max-sm:prose-sm prose-headings:font-semibold prose-h1:text-lg prose-h2:text-base prose-h3:text-base prose-pre:bg-gray-800 dark:prose-pre:bg-gray-900"
 				bind:this={contentEl}
+				class:mt-2={reasoningUpdates.length > 0 || searchUpdates.length > 0}
 			>
 				{#if isLast && loading && $settings.disableStream}
 					<IconLoading classNames="loading inline ml-2 first:ml-0" />
 				{/if}
-				{#each tokens as token}
-					{#if token.type === "code"}
-						<CodeBlock lang={token.lang} code={unsanitizeMd(token.text)} />
-					{:else}
-						{#await marked.parse(token.raw, options) then parsed}
-							<!-- eslint-disable-next-line svelte/no-at-html-tags -->
-							{@html DOMPurify.sanitize(parsed)}
-						{/await}
-					{/if}
-				{/each}
+
+				<div
+					class="prose max-w-none dark:prose-invert max-sm:prose-sm prose-headings:font-semibold prose-h1:text-lg prose-h2:text-base prose-h3:text-base prose-pre:bg-gray-800 dark:prose-pre:bg-gray-900"
+				>
+					<MarkdownRenderer content={message.content} sources={webSearchSources} />
+				</div>
 			</div>
 
 			<!-- Web Search sources -->
@@ -363,7 +315,8 @@
 						>
 							<img
 								class="h-3.5 w-3.5 rounded"
-								src="https://www.google.com/s2/favicons?sz=64&domain_url={new URL(link).hostname}"
+								src="https://www.google.com/s2/favicons?sz=64&domain_url={new URL(link).hostname ||
+									'placeholder'}"
 								alt="{title} favicon"
 							/>
 							<div>{new URL(link).hostname.replace(/^www\./, "")}</div>
@@ -384,7 +337,8 @@
 						>
 							<img
 								class="h-3.5 w-3.5 rounded"
-								src="https://www.google.com/s2/favicons?sz=64&domain_url={new URL(uri).hostname}"
+								src="https://www.google.com/s2/favicons?sz=64&domain_url={new URL(uri).hostname ||
+									'placeholder'}"
 								alt="{title} favicon"
 							/>
 							<div>{title}</div>
@@ -452,7 +406,8 @@
 {#if message.from === "user"}
 	<div
 		class="group relative w-full items-start justify-start gap-4 max-sm:text-sm"
-		id="message-user-{message.id}"
+		data-message-id={message.id}
+		data-message-type="user"
 		role="presentation"
 		on:click={() => (isTapped = !isTapped)}
 		on:keydown={() => (isTapped = !isTapped)}
@@ -461,7 +416,7 @@
 			{#if message.files?.length}
 				<div class="flex w-fit gap-4 px-5">
 					{#each message.files as file}
-						<UploadedFile {file} canClose={false} isPreview={false} />
+						<UploadedFile {file} canClose={false} />
 					{/each}
 				</div>
 			{/if}
@@ -524,17 +479,15 @@
 							: ''}"
 					>
 						<div class="mx-auto flex flex-row flex-nowrap gap-2">
-							{#if downloadLink}
-								<a
-									class="rounded-lg border border-gray-100 bg-gray-100 p-1 text-xs text-gray-400 group-hover:block hover:text-gray-500 dark:border-gray-800 dark:bg-gray-800 dark:text-gray-400 dark:hover:text-gray-300 max-sm:!hidden md:hidden"
-									title="Download prompt and parameters"
-									type="button"
-									target="_blank"
-									href={downloadLink}
-								>
-									<CarbonDownload />
-								</a>
-							{/if}
+							<a
+								class="rounded-lg border border-gray-100 bg-gray-100 p-1 text-xs text-gray-400 group-hover:block hover:text-gray-500 dark:border-gray-800 dark:bg-gray-800 dark:text-gray-400 dark:hover:text-gray-300 max-sm:!hidden md:hidden"
+								title="Download prompt and parameters"
+								type="button"
+								target="_blank"
+								href={downloadLink}
+							>
+								<CarbonDownload />
+							</a>
 							{#if !readOnly}
 								<button
 									class="cursor-pointer rounded-lg border border-gray-100 bg-gray-100 p-1 text-xs text-gray-400 group-hover:block hover:text-gray-500 dark:border-gray-800 dark:bg-gray-800 dark:text-gray-400 dark:hover:text-gray-300 md:hidden lg:-right-2"
@@ -555,19 +508,67 @@
 {/if}
 
 {#if nChildren > 0}
-	<svelte:self
-		{loading}
-		{messages}
-		{isAuthor}
-		{readOnly}
-		{model}
-		id={messages.find((m) => m.id === id)?.children?.[childrenToRender]}
-		on:retry
-		on:vote
-		on:continue
-	>
-		{@render childrenNav()}
-	</svelte:self>
+	{@const messageId = messages.find((m) => m.id === id)?.children?.[childrenToRender]}
+	{#key messageId}
+		<svelte:self
+			{loading}
+			{messages}
+			{isAuthor}
+			{readOnly}
+			id={messageId}
+			on:retry
+			on:vote
+			on:continue
+		>
+			<svelte:fragment slot="childrenNav">
+				{#if nChildren > 1 && $convTreeStore.editing === null}
+					<div
+						class="font-white group/navbranch z-0 -mt-1 ml-3.5 mr-auto flex h-6 w-fit select-none flex-row items-center justify-center gap-1 text-sm"
+					>
+						<button
+							class="inline text-lg font-thin text-gray-400 hover:text-gray-800 disabled:pointer-events-none disabled:opacity-25 dark:text-gray-500 dark:hover:text-gray-200"
+							on:click={() => (childrenToRender = Math.max(0, childrenToRender - 1))}
+							disabled={childrenToRender === 0 || loading}
+						>
+							<CarbonChevronLeft class="text-sm" />
+						</button>
+						<span class=" text-gray-400 dark:text-gray-500">
+							{childrenToRender + 1} / {nChildren}
+						</span>
+						<button
+							class="inline text-lg font-thin text-gray-400 hover:text-gray-800 disabled:pointer-events-none disabled:opacity-25 dark:text-gray-500 dark:hover:text-gray-200"
+							on:click={() =>
+								(childrenToRender = Math.min(
+									message?.children?.length ?? 1 - 1,
+									childrenToRender + 1
+								))}
+							disabled={childrenToRender === nChildren - 1 || loading}
+						>
+							<CarbonChevronRight class="text-sm" />
+						</button>
+						{#if !loading && message.children}<form
+								method="POST"
+								action="?/deleteBranch"
+								class="hidden group-hover/navbranch:block"
+								use:enhance={({ cancel }) => {
+									if (!confirm("Are you sure you want to delete this branch?")) {
+										cancel();
+									}
+								}}
+							>
+								<input name="messageId" value={message.children[childrenToRender]} type="hidden" />
+								<button
+									class="flex items-center justify-center text-xs text-gray-400 hover:text-gray-800 dark:text-gray-500 dark:hover:text-gray-200"
+									type="submit"
+									><CarbonTrashCan />
+								</button>
+							</form>
+						{/if}
+					</div>
+				{/if}
+			</svelte:fragment>
+		</svelte:self>
+	{/key}
 {/if}
 
 <style>
