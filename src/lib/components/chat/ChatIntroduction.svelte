@@ -31,42 +31,31 @@
 			</p>
 		</div>
 	</div>
-	<div class="lg:col-span-2 lg:pl-24">
-		{#each announcementBanners as banner}
-			<AnnouncementBanner classNames="mb-4" title={banner.title}>
-				<a
-					target={banner.external ? "_blank" : "_self"}
-					href={banner.linkHref}
-					class="mr-2 flex items-center underline hover:no-underline">{banner.linkTitle}</a
-				>
-			</AnnouncementBanner>
-		{/each}
-		<div class="overflow-hidden rounded-xl border dark:border-gray-800">
-			<div class="flex p-3">
-				<div>
-					<div class="text-sm text-gray-600 dark:text-gray-400">Current Model</div>
-					<div class="flex items-center gap-1.5 font-semibold max-sm:text-smd">
-						{#if currentModel.logoUrl}
-							<img
-								class=" overflown aspect-square size-4 rounded border dark:border-gray-700"
-								src={currentModel.logoUrl}
-								alt=""
-							/>
-						{:else}
-							<div class="size-4 rounded border border-transparent bg-gray-300 dark:bg-gray-800" />
-						{/if}
-						{currentModel.displayName}
-					</div>
+	<div class="overflow-hidden rounded-xl border dark:border-gray-800">
+		<div class="flex p-3">
+			<div>
+				<div class="text-sm text-gray-600 dark:text-gray-400">Current Model</div>
+				<div class="flex items-center gap-1.5 font-semibold max-sm:text-smd">
+					{#if currentModel.logoUrl}
+						<img
+							class=" overflown aspect-square size-4 rounded border dark:border-gray-700"
+							src={currentModel.logoUrl}
+							alt=""
+						/>
+					{:else}
+						<div class="size-4 rounded border border-transparent bg-gray-300 dark:bg-gray-800" ></div>
+					{/if}
+					{currentModel.displayName}
 				</div>
-				<a
-					href="{base}/settings/{currentModel.id}"
-					aria-label="Settings"
-					class="btn ml-auto flex h-7 w-7 self-start rounded-full bg-gray-100 p-1 text-xs hover:bg-gray-100 dark:border-gray-600 dark:bg-gray-800 dark:hover:bg-gray-600"
-					><IconGear /></a
-				>
 			</div>
-			<ModelCardMetadata variant="dark" model={currentModel} />
+			<a
+				href="{base}/settings/{currentModel.id}"
+				aria-label="Settings"
+				class="btn ml-auto flex h-7 w-7 self-start rounded-full bg-gray-100 p-1 text-xs hover:bg-gray-100 dark:border-gray-600 dark:bg-gray-800 dark:hover:bg-gray-600"
+				><IconGear /></a
+			>
 		</div>
+		<ModelCardMetadata variant="dark" model={currentModel} />
 	</div>
 	{#if currentModel.promptExamples}
 		<div class="lg:col-span-3 lg:mt-6">

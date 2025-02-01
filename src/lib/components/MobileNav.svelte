@@ -41,7 +41,7 @@
 		bind:this={openEl}><CarbonTextAlignJustify /></button
 	>
 	{#await title}
-		<div class="flex h-full items-center justify-center" />
+		<div class="flex h-full items-center justify-center"></div>
 	{:then title}
 		<span class="truncate px-4">{title ?? ""}</span>
 	{/await}
