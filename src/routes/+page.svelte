@@ -1,8 +1,11 @@
 <script lang="ts">
 	import { goto } from "$app/navigation";
 	import { base } from "$app/paths";
-	import { page } from "$app/stores";
-	import { env as envPublic } from "$env/dynamic/public";
+	import { page } from "$app/state";
+	import { usePublicConfig } from "$lib/utils/PublicConfig.svelte";
+
+	const publicConfig = usePublicConfig();
+
 	import ChatWindow from "$lib/components/chat/ChatWindow.svelte";
 	import { ERROR_MESSAGES, error } from "$lib/stores/errors";
 	import { pendingMessage } from "$lib/stores/pendingMessage";
@@ -10,9 +13,9 @@
 	import { findCurrentModel } from "$lib/utils/models";
 	import { onMount } from "svelte";
 
-	export let data;
-	let loading = false;
-	let files: File[] = [];
+	let { data } = $props();
+	let loading = $state(false);
+	let files: File[] = $state([]);
 
 	const settings = useSettingsStore();
 
@@ -30,8 +33,8 @@
 			if (validModels.includes($settings.activeModel)) {
 				model = $settings.activeModel;
 			} else {
-				if (validModels.includes(data.assistant?.modelId)) {
-					model = data.assistant?.modelId;
+				if (data.assistant?.modelId && validModels.includes(data.assistant.modelId)) {
+					model = data.assistant.modelId;
 				} else {
 					model = data.models[0].id;
 				}
@@ -75,20 +78,22 @@
 
 	onMount(() => {
 		// check if there's a ?q query param with a message
-		const query = $page.url.searchParams.get("q");
+		const query = page.url.searchParams.get("q");
 		if (query) createConversation(query);
 	});
 
-	$: currentModel = findCurrentModel(
-		[...data.models, ...data.oldModels],
-		!$settings.assistants.includes($settings.activeModel)
-			? $settings.activeModel
-			: data.assistant?.modelId
+	let currentModel = $derived(
+		findCurrentModel(
+			[...data.models, ...data.oldModels],
+			!$settings.assistants.includes($settings.activeModel)
+				? $settings.activeModel
+				: data.assistant?.modelId
+		)
 	);
 </script>
 
 <svelte:head>
-	<title>{envPublic.PUBLIC_APP_NAME}</title>
+	<title>{publicConfig.PUBLIC_APP_NAME}</title>
 </svelte:head>
 
 <ChatWindow

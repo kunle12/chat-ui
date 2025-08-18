@@ -1,6 +1,10 @@
 <script lang="ts">
-	export let checked: boolean;
-	export let name: string;
+	interface Props {
+		checked: boolean;
+		name: string;
+	}
+
+	let { checked = $bindable(), name }: Props = $props();
 </script>
 
 <input bind:checked type="checkbox" {name} class="peer pointer-events-none absolute opacity-0" />

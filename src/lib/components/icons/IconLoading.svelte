@@ -1,5 +1,9 @@
 <script lang="ts">
-	export let classNames = "";
+	interface Props {
+		classNames?: string;
+	}
+
+	let { classNames = "" }: Props = $props();
 </script>
 
 <div class={"inline-flex h-8 flex-none items-center gap-1 " + classNames}>

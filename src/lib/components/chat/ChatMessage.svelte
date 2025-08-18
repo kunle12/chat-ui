@@ -1,19 +1,14 @@
 <script lang="ts">
 	import type { Message } from "$lib/types/Message";
-	import { afterUpdate, createEventDispatcher, tick } from "svelte";
-	import { deepestChild } from "$lib/utils/deepestChild";
-	import { page } from "$app/stores";
+	import { createEventDispatcher, tick } from "svelte";
+	import { page } from "$app/state";
 
 	import CopyToClipBoardBtn from "../CopyToClipBoardBtn.svelte";
 	import IconLoading from "../icons/IconLoading.svelte";
 	import CarbonRotate360 from "~icons/carbon/rotate-360";
-	import CarbonTrashCan from "~icons/carbon/trash-can";
 	import CarbonDownload from "~icons/carbon/download";
-	import CarbonThumbsUp from "~icons/carbon/thumbs-up";
-	import CarbonThumbsDown from "~icons/carbon/thumbs-down";
+
 	import CarbonPen from "~icons/carbon/pen";
-	import CarbonChevronLeft from "~icons/carbon/chevron-left";
-	import CarbonChevronRight from "~icons/carbon/chevron-right";
 	import UploadedFile from "./UploadedFile.svelte";
 
 	import OpenWebSearchResults from "../OpenWebSearchResults.svelte";
@@ -28,159 +23,109 @@
 		MessageReasoningUpdateType,
 	} from "$lib/types/MessageUpdate";
 	import { base } from "$app/paths";
-	import { useConvTreeStore } from "$lib/stores/convTree";
 	import ToolUpdate from "./ToolUpdate.svelte";
-	import { useSettingsStore } from "$lib/stores/settings";
-	import { enhance } from "$app/forms";
-	import { browser } from "$app/environment";
 	import MarkdownRenderer from "./MarkdownRenderer.svelte";
 	import OpenReasoningResults from "./OpenReasoningResults.svelte";
+	import Alternatives from "./Alternatives.svelte";
+	import Vote from "./Vote.svelte";
 
-	export let id: Message["id"];
-	export let messages: Message[];
-	export let loading = false;
-	export let isAuthor = true;
-	export let readOnly = false;
-	export let isTapped = false;
+	interface Props {
+		message: Message;
+		loading?: boolean;
+		isAuthor?: boolean;
+		readOnly?: boolean;
+		isTapped?: boolean;
+		alternatives?: Message["id"][];
+		editMsdgId?: Message["id"] | null;
+		isLast?: boolean;
+	}
 
-	$: message = messages.find((m) => m.id === id) ?? ({} as Message);
-
-	$: urlNotTrailing = $page.url.pathname.replace(/\/$/, "");
+	let {
+		message,
+		loading = false,
+		isAuthor = true,
+		readOnly = false,
+		isTapped = $bindable(false),
+		alternatives = [],
+		editMsdgId = $bindable(null),
+		isLast = false,
+	}: Props = $props();
 
 	const dispatch = createEventDispatcher<{
 		retry: { content?: string; id: Message["id"] };
-		vote: { score: Message["score"]; id: Message["id"] };
 	}>();
 
-	let contentEl: HTMLElement;
-	let loadingEl: IconLoading;
-	let pendingTimeout: ReturnType<typeof setTimeout>;
-	let isCopied = false;
-
-	let initialized = false;
-
-	$: emptyLoad =
-		!message.content && (webSearchIsDone || (searchUpdates && searchUpdates.length === 0));
-
-	const settings = useSettingsStore();
-
-	afterUpdate(() => {
-		if ($settings.disableStream) {
-			return;
-		}
-
-		loadingEl?.$destroy();
-		clearTimeout(pendingTimeout);
-
-		// Add loading animation to the last message if update takes more than 600ms
-		if (isLast && loading && emptyLoad) {
-			pendingTimeout = setTimeout(() => {
-				if (contentEl) {
-					loadingEl = new IconLoading({
-						target: deepestChild(contentEl),
-						props: { classNames: "loading inline ml-2 first:ml-0" },
-					});
-				}
-			}, 600);
-		}
-	});
+	let contentEl: HTMLElement | undefined = $state();
+	let isCopied = $state(false);
 
 	function handleKeyDown(e: KeyboardEvent) {
 		if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
-			editFormEl.requestSubmit();
+			editFormEl?.requestSubmit();
 		}
 	}
 
-	$: searchUpdates = (message.updates?.filter(({ type }) => type === MessageUpdateType.WebSearch) ??
-		[]) as MessageWebSearchUpdate[];
+	let editContentEl: HTMLTextAreaElement | undefined = $state();
+	let editFormEl: HTMLFormElement | undefined = $state();
 
-	$: reasoningUpdates = (message.updates?.filter(
-		({ type }) => type === MessageUpdateType.Reasoning
-	) ?? []) as MessageReasoningUpdate[];
-
-	$: messageFinalAnswer = message.updates?.find(
-		// svelte-ignore reactive_declaration_non_reactive_property
-				({ type }) => type === MessageUpdateType.FinalAnswer
-	) as MessageFinalAnswerUpdate;
-
-	// filter all updates with type === "tool" then group them by uuid field
-
-	$: toolUpdates = message.updates
-		?.filter(({ type }) => type === "tool")
-		.reduce((acc, update) => {
-			if (update.type !== "tool") {
-				return acc;
-			}
-			acc[update.uuid] = acc[update.uuid] ?? [];
-			acc[update.uuid].push(update);
-			return acc;
-		}, {} as Record<string, MessageToolUpdate[]>);
-
-	$: downloadLink = urlNotTrailing + `/message/${message.id}/prompt`;
-
-	let webSearchIsDone = true;
-
-	// svelte-ignore reactive_declaration_non_reactive_property
-	$: webSearchIsDone = searchUpdates.some(
-				(update) => update.subtype === MessageWebSearchUpdateType.Finished
+	let searchUpdates = $derived(
+		(message.updates?.filter(({ type }) => type === MessageUpdateType.WebSearch) ??
+			[]) as MessageWebSearchUpdate[]
 	);
 
-	// svelte-ignore reactive_declaration_non_reactive_property
-	$: webSearchSources = searchUpdates?.find(
-		(update): update is MessageWebSearchSourcesUpdate =>
-						update.subtype === MessageWebSearchUpdateType.Sources
-	)?.sources;
+	let reasoningUpdates = $derived(
+		(message.updates?.filter(({ type }) => type === MessageUpdateType.Reasoning) ??
+			[]) as MessageReasoningUpdate[]
+	);
 
-	$: if (isCopied) {
-		setTimeout(() => {
-			isCopied = false;
-		}, 1000);
-	}
+	let messageFinalAnswer = $derived(
+		message.updates?.find(
+			({ type }) => type === MessageUpdateType.FinalAnswer
+		) as MessageFinalAnswerUpdate
+	);
+	// filter all updates with type === "tool" then group them by uuid field
 
-	$: editMode = $convTreeStore.editing === message.id;
-	let editContentEl: HTMLTextAreaElement;
-	let editFormEl: HTMLFormElement;
+	let toolUpdates = $derived(
+		message.updates
+			?.filter(({ type }) => type === "tool")
+			.reduce(
+				(acc, update) => {
+					if (update.type !== "tool") {
+						return acc;
+					}
+					acc[update.uuid] = acc[update.uuid] ?? [];
+					acc[update.uuid].push(update);
+					return acc;
+				},
+				{} as Record<string, MessageToolUpdate[]>
+			)
+	);
+	let urlNotTrailing = $derived(page.url.pathname.replace(/\/$/, ""));
+	let downloadLink = $derived(urlNotTrailing + `/message/${message.id}/prompt`);
+	let webSearchSources = $derived(
+		searchUpdates?.find(
+			(update): update is MessageWebSearchSourcesUpdate =>
+				update.subtype === MessageWebSearchUpdateType.Sources
+		)?.sources
+	);
 
-	$: if (editMode) {
-		tick();
-		if (editContentEl) {
-			editContentEl.value = message.content;
-			editContentEl?.focus();
+	$effect(() => {
+		if (isCopied) {
+			setTimeout(() => {
+				isCopied = false;
+			}, 1000);
 		}
-	}
+	});
 
-	$: isLast = (message && message.children?.length === 0) ?? false;
-
-	$: childrenToRender = 0;
-	$: nChildren = message?.children?.length ?? 0;
-
-	$: {
-		if (initialized) {
-			childrenToRender = Math.max(0, nChildren - 1);
-		} else {
-			childrenToRender = 0;
-			initialized = true;
+	let editMode = $derived(editMsdgId === message.id);
+	$effect(() => {
+		if (editMode) {
+			tick();
+			if (editContentEl) {
+				editContentEl.value = message.content;
+				editContentEl?.focus();
+			}
 		}
-	}
-	const convTreeStore = useConvTreeStore();
-
-	$: if (message.children?.length === 0) {
-		$convTreeStore.leaf = message.id;
-		// Check if the code is running in a browser
-		if (browser) {
-			// Remember the last message viewed or interacted by the user
-			localStorage.setItem("leafId", message.id);
-		}
-	}
-
-	let isRun = false;
-	$: {
-		if (message.id && !isRun) {
-			if (message.currentChildIndex) childrenToRender = message.currentChildIndex;
-			isRun = true;
-		}
-	}
-	$: if (message.children?.length === 0) $convTreeStore.leaf = message.id;
+	});
 </script>
 
 {#snippet childrenNav()}
@@ -237,28 +182,28 @@
 		data-message-id={message.id}
 		data-message-role="assistant"
 		role="presentation"
-		on:click={() => (isTapped = !isTapped)}
-		on:keydown={() => (isTapped = !isTapped)}
+		onclick={() => (isTapped = !isTapped)}
+		onkeydown={() => (isTapped = !isTapped)}
 	>
-		{#if $page.data?.assistant?.avatar}
+		{#if page.data?.assistant?.avatar}
 			<img
-				src="{base}/settings/assistants/{$page.data.assistant._id}/avatar.jpg"
+				src="{base}/settings/assistants/{page.data.assistant._id}/avatar.jpg"
 				alt="Avatar"
-				class="mt-5 h-3 w-3 flex-none select-none rounded-full shadow-lg"
+				class="mt-5 h-3 w-3 flex-none select-none rounded-full shadow-lg max-sm:hidden"
 			/>
 		{:else}
 			<img
 				alt=""
 				src="https://huggingface.co/avatars/2edb18bd0206c16b433841a47f53fa8e.svg"
-				class="mt-5 h-3 w-3 flex-none select-none rounded-full shadow-lg"
+				class="mt-5 h-3 w-3 flex-none select-none rounded-full shadow-lg max-sm:hidden"
 			/>
 		{/if}
 		<div
-			class="relative min-h-[calc(2rem+theme(spacing[3.5])*2)] min-w-[60px] break-words rounded-2xl border border-gray-100 bg-gradient-to-br from-gray-50 px-5 py-3.5 text-gray-600 prose-pre:my-2 dark:border-gray-800 dark:from-gray-800/40 dark:text-gray-300"
+			class="relative flex min-h-[calc(2rem+theme(spacing[3.5])*2)] min-w-[60px] flex-col gap-2 break-words rounded-2xl border border-gray-100 bg-gradient-to-br from-gray-50 px-5 py-3.5 text-gray-600 prose-pre:my-2 dark:border-gray-800 dark:from-gray-800/40 dark:text-gray-300"
 		>
 			{#if message.files?.length}
 				<div class="flex h-fit flex-wrap gap-x-5 gap-y-2">
-					{#each message.files as file}
+					{#each message.files as file (file.value)}
 						<UploadedFile {file} canClose={false} />
 					{/each}
 				</div>
@@ -292,7 +237,7 @@
 				bind:this={contentEl}
 				class:mt-2={reasoningUpdates.length > 0 || searchUpdates.length > 0}
 			>
-				{#if isLast && loading && $settings.disableStream}
+				{#if isLast && loading && message.content.length === 0}
 					<IconLoading classNames="loading inline ml-2 first:ml-0" />
 				{/if}
 
@@ -356,43 +301,20 @@
 	"
 			>
 				{#if isAuthor}
-					<button
-						class="btn rounded-sm p-1 text-sm text-gray-400 hover:text-gray-500 focus:ring-0 dark:text-gray-400 dark:hover:text-gray-300
-					{message.score && message.score > 0
-							? 'text-green-500 hover:text-green-500 dark:text-green-400 hover:dark:text-green-400'
-							: ''}"
-						title={message.score === 1 ? "Remove +1" : "+1"}
-						type="button"
-						on:click={() =>
-							dispatch("vote", { score: message.score === 1 ? 0 : 1, id: message.id })}
-					>
-						<CarbonThumbsUp class="h-[1.14em] w-[1.14em]" />
-					</button>
-					<button
-						class="btn rounded-sm p-1 text-sm text-gray-400 hover:text-gray-500 focus:ring-0 dark:text-gray-400 dark:hover:text-gray-300
-					{message.score && message.score < 0
-							? 'text-red-500 hover:text-red-500 dark:text-red-400 hover:dark:text-red-400'
-							: ''}"
-						title={message.score === -1 ? "Remove -1" : "-1"}
-						type="button"
-						on:click={() =>
-							dispatch("vote", { score: message.score === -1 ? 0 : -1, id: message.id })}
-					>
-						<CarbonThumbsDown class="h-[1.14em] w-[1.14em]" />
-					</button>
+					<Vote {message} on:vote />
 				{/if}
 				<button
 					class="btn rounded-sm p-1 text-sm text-gray-400 hover:text-gray-500 focus:ring-0 dark:text-gray-400 dark:hover:text-gray-300"
 					title="Retry"
 					type="button"
-					on:click={() => {
+					onclick={() => {
 						dispatch("retry", { id: message.id });
 					}}
 				>
 					<CarbonRotate360 />
 				</button>
 				<CopyToClipBoardBtn
-					on:click={() => {
+					onClick={() => {
 						isCopied = true;
 					}}
 					classNames="btn rounded-sm p-1 text-sm text-gray-400 hover:text-gray-500 focus:ring-0 dark:text-gray-400 dark:hover:text-gray-300"
@@ -409,8 +331,8 @@
 		data-message-id={message.id}
 		data-message-type="user"
 		role="presentation"
-		on:click={() => (isTapped = !isTapped)}
-		on:keydown={() => (isTapped = !isTapped)}
+		onclick={() => (isTapped = !isTapped)}
+		onkeydown={() => (isTapped = !isTapped)}
 	>
 		<div class="flex w-full flex-col gap-2">
 			{#if message.files?.length}
@@ -432,9 +354,10 @@
 					<form
 						class="flex w-full flex-col"
 						bind:this={editFormEl}
-						on:submit|preventDefault={() => {
-							dispatch("retry", { content: editContentEl.value, id: message.id });
-							$convTreeStore.editing = null;
+						onsubmit={(e) => {
+							e.preventDefault();
+							dispatch("retry", { content: editContentEl?.value, id: message.id });
+							editMsdgId = null;
 						}}
 					>
 						<textarea
@@ -442,7 +365,7 @@
 							rows="5"
 							bind:this={editContentEl}
 							value={message.content.trim()}
-							on:keydown={handleKeyDown}
+							onkeydown={handleKeyDown}
 							required
 						></textarea>
 						<div class="flex w-full flex-row flex-nowrap items-center justify-center gap-2 pt-2">
@@ -460,8 +383,8 @@
 							<button
 								type="button"
 								class="btn rounded-sm p-2 text-sm text-gray-400 hover:text-gray-500 focus:ring-0 dark:text-gray-400 dark:hover:text-gray-300"
-								on:click={() => {
-									$convTreeStore.editing = null;
+								onclick={() => {
+									editMsdgId = null;
 								}}
 							>
 								Cancel
@@ -493,7 +416,7 @@
 									class="cursor-pointer rounded-lg border border-gray-100 bg-gray-100 p-1 text-xs text-gray-400 group-hover:block hover:text-gray-500 dark:border-gray-800 dark:bg-gray-800 dark:text-gray-400 dark:hover:text-gray-300 md:hidden lg:-right-2"
 									title="Branch"
 									type="button"
-									on:click={() => ($convTreeStore.editing = message.id)}
+									onclick={() => (editMsdgId = message.id)}
 								>
 									<CarbonPen />
 								</button>

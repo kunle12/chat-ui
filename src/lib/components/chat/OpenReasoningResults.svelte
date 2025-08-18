@@ -2,12 +2,22 @@
 	import MarkdownRenderer from "./MarkdownRenderer.svelte";
 	import CarbonCaretDown from "~icons/carbon/caret-down";
 
-	export let summary: string;
-	export let content: string;
-	export let loading: boolean = false;
+	interface Props {
+		summary: string;
+		content: string;
+		loading?: boolean;
+	}
+
+	let { summary, content, loading = false }: Props = $props();
+	let isOpen = $state(loading);
+
+	$effect(() => {
+		isOpen = loading;
+	});
 </script>
 
 <details
+	bind:open={isOpen}
 	class="group flex w-fit max-w-full flex-col rounded-xl border border-gray-200 bg-white shadow-sm dark:border-gray-800 dark:bg-gray-900"
 >
 	<summary
@@ -48,7 +58,11 @@
 				class="flex items-center gap-1 truncate whitespace-nowrap text-[.82rem] text-gray-400"
 				class:animate-pulse={loading}
 			>
-				{summary}
+				{summary.length > 33
+					? summary.substring(0, 33) + "..."
+					: summary.endsWith("...")
+						? summary
+						: summary + "..."}
 			</dt>
 		</dl>
 		<CarbonCaretDown class="size-6 text-gray-400 transition-transform group-open:rotate-180" />
@@ -57,7 +71,9 @@
 	<div
 		class="space-y-4 border-t border-gray-200 px-5 pb-2 pt-2 text-sm text-gray-600 dark:border-gray-800 dark:text-gray-400"
 	>
-		<MarkdownRenderer {content} />
+		{#key content}
+			<MarkdownRenderer {content} />
+		{/key}
 	</div>
 </details>
 

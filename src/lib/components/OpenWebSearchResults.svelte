@@ -10,18 +10,22 @@
 	import IconInternet from "./icons/IconInternet.svelte";
 	import CarbonCaretDown from "~icons/carbon/caret-down";
 
-	export let webSearchMessages: MessageWebSearchUpdate[] = [];
+	interface Props {
+		webSearchMessages?: MessageWebSearchUpdate[];
+	}
 
-	$: sources = webSearchMessages.find(isMessageWebSearchSourcesUpdate)?.sources;
-	// svelte-ignore reactive_declaration_non_reactive_property
-	$: lastMessage = webSearchMessages
-								.filter((update) => update.subtype !== MessageWebSearchUpdateType.Sources)
-		.at(-1) as MessageWebSearchUpdate;
-	// svelte-ignore reactive_declaration_non_reactive_property
-	$: errored = webSearchMessages.some(
-				(update) => update.subtype === MessageWebSearchUpdateType.Error
+	let { webSearchMessages = [] }: Props = $props();
+
+	let sources = $derived(webSearchMessages.find(isMessageWebSearchSourcesUpdate)?.sources);
+	let lastMessage = $derived(
+		webSearchMessages
+			.filter((update) => update.subtype !== MessageWebSearchUpdateType.Sources)
+			.at(-1) as MessageWebSearchUpdate
 	);
-	$: loading = !sources && !errored;
+	let errored = $derived(
+		webSearchMessages.some((update) => update.subtype === MessageWebSearchUpdateType.Error)
+	);
+	let loading = $derived(!sources && !errored);
 </script>
 
 <details

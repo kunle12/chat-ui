@@ -22,13 +22,13 @@ MODELS=`[
     },
     "promptExamples": [
       {
-        "title": "Write an email from bullet list",
+        "title": "Write an email",
         "prompt": "As a restaurant owner, write a professional email to the supplier to get these products every week: \n\n- Wine (x10)\n- Eggs (x24)\n- Bread (x12)"
       }, {
-        "title": "Code a snake game",
+        "title": "Code a game",
         "prompt": "Code a basic snake game in python, give explanations for each step."
       }, {
-        "title": "Assist in a task",
+        "title": "Recipe help",
         "prompt": "How do I make a delicious lemon cheesecake?"
       }
     ]
@@ -43,7 +43,7 @@ You can change things like the parameters, or customize the preprompt to better 
 
 When querying the model for a chat response, the `chatPromptTemplate` template is used. `messages` is an array of chat messages, it has the format `[{ content: string }, ...]`. To identify if a message is a user message or an assistant message the `ifUser` and `ifAssistant` block helpers can be used.
 
-The following is the default `chatPromptTemplate`, although newlines and indentiation have been added for readability. You can find the prompts used in production for HuggingChat [here](https://github.com/huggingface/chat-ui/blob/main/PROMPTS.md). The templating language used is [Handlebars](https://www.npmjs.com/package/handlebars).
+The following is the default `chatPromptTemplate`, although newlines and indentation have been added for readability. You can find the prompts used in production for HuggingChat [here](https://github.com/huggingface/chat-ui/blob/main/PROMPTS.md). The templating language used is [Handlebars](https://www.npmjs.com/package/handlebars).
 
 ```handlebars
 {{preprompt}}

@@ -1,3 +1,4 @@
+import { config } from "$lib/server/config";
 import type { ToolResult, Tool } from "$lib/types/Tool";
 import {
 	MessageReasoningUpdateType,
@@ -27,7 +28,10 @@ export async function* generate(
 	const startTime = new Date();
 	if (
 		model.reasoning &&
-		(model.reasoning.type === "regex" || model.reasoning.type === "summarize")
+		// if the beginToken is an empty string, the model starts in reasoning mode
+		(model.reasoning.type === "regex" ||
+			model.reasoning.type === "summarize" ||
+			(model.reasoning.type === "tokens" && model.reasoning.beginToken === ""))
 	) {
 		// if the model has reasoning in regex or summarize mode, it starts in reasoning mode
 		// and we extract the answer from the reasoning
@@ -104,7 +108,11 @@ Do not use prefixes such as Response: or Answer: when answering to the user.`,
 			} else if (model.reasoning && model.reasoning.type === "tokens") {
 				// make sure to remove the content of the reasoning buffer from
 				// the final answer to avoid duplication
-				const beginIndex = reasoningBuffer.indexOf(model.reasoning.beginToken);
+
+				// if the beginToken is an empty string, we don't need to remove anything
+				const beginIndex = model.reasoning.beginToken
+					? reasoningBuffer.indexOf(model.reasoning.beginToken)
+					: 0;
 				const endIndex = reasoningBuffer.lastIndexOf(model.reasoning.endToken);
 
 				if (beginIndex !== -1 && endIndex !== -1) {
@@ -112,26 +120,21 @@ Do not use prefixes such as Response: or Answer: when answering to the user.`,
 					finalAnswer =
 						text.slice(0, beginIndex) + text.slice(endIndex + model.reasoning.endToken.length);
 				}
-
-				yield {
-					type: MessageUpdateType.FinalAnswer,
-					text: finalAnswer,
-					interrupted,
-					webSources: output.webSources,
-				};
-				continue;
 			}
+
+			yield {
+				type: MessageUpdateType.FinalAnswer,
+				text: finalAnswer,
+				interrupted,
+				webSources: output.webSources,
+			};
+			continue;
 		}
 
 		if (model.reasoning && model.reasoning.type === "tokens") {
 			if (output.token.text === model.reasoning.beginToken) {
 				reasoning = true;
 				reasoningBuffer += output.token.text;
-				yield {
-					type: MessageUpdateType.Reasoning,
-					subtype: MessageReasoningUpdateType.Status,
-					status: "Started thinking...",
-				};
 				continue;
 			} else if (output.token.text === model.reasoning.endToken) {
 				reasoning = false;
@@ -151,6 +154,40 @@ Do not use prefixes such as Response: or Answer: when answering to the user.`,
 		if (reasoning) {
 			reasoningBuffer += output.token.text;
 
+			if (model.reasoning && model.reasoning.type === "tokens") {
+				// split reasoning buffer so that anything that comes after the end token is separated
+				// add it to the normal buffer, and yield two updates, one for the reasoning and one for the normal content
+				// also set reasoning to false
+
+				if (reasoningBuffer.lastIndexOf(model.reasoning.endToken) !== -1) {
+					const endTokenIndex = reasoningBuffer.lastIndexOf(model.reasoning.endToken);
+					const textBuffer = reasoningBuffer.slice(endTokenIndex + model.reasoning.endToken.length);
+					reasoningBuffer = reasoningBuffer.slice(
+						0,
+						endTokenIndex + model.reasoning.endToken.length + 1
+					);
+
+					yield {
+						type: MessageUpdateType.Reasoning,
+						subtype: MessageReasoningUpdateType.Stream,
+						token: output.token.text,
+					};
+
+					yield {
+						type: MessageUpdateType.Stream,
+						token: textBuffer,
+					};
+
+					yield {
+						type: MessageUpdateType.Reasoning,
+						subtype: MessageReasoningUpdateType.Status,
+						status: `Done in ${Math.round((new Date().getTime() - startTime.getTime()) / 1000)}s.`,
+					};
+
+					reasoning = false;
+					continue;
+				}
+			}
 			// yield status update if it has changed
 			if (status !== "") {
 				yield {
@@ -162,7 +199,10 @@ Do not use prefixes such as Response: or Answer: when answering to the user.`,
 			}
 
 			// create a new status every 5 seconds
-			if (new Date().getTime() - lastReasoningUpdate.getTime() > 4000) {
+			if (
+				config.REASONING_SUMMARY === "true" &&
+				new Date().getTime() - lastReasoningUpdate.getTime() > 4000
+			) {
 				lastReasoningUpdate = new Date();
 				try {
 					generateSummaryOfReasoning(reasoningBuffer).then((summary) => {
@@ -182,8 +222,12 @@ Do not use prefixes such as Response: or Answer: when answering to the user.`,
 		}
 
 		// abort check
-		const date = AbortedGenerations.getInstance().getList().get(conv._id.toString());
-		if (date && date > promptedAt) break;
+		const date = AbortedGenerations.getInstance().getAbortTime(conv._id.toString());
+
+		if (date && date > promptedAt) {
+			logger.info(`Aborting generation for conversation ${conv._id}`);
+			break;
+		}
 
 		// no output check
 		if (!output) break;

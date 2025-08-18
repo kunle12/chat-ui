@@ -1,6 +1,5 @@
 <script lang="ts">
-	import { browser } from "$app/environment";
-	import { createEventDispatcher, onMount } from "svelte";
+	import { createEventDispatcher, onMount, tick } from "svelte";
 
 	import HoverTooltip from "$lib/components/HoverTooltip.svelte";
 	import IconInternet from "$lib/components/icons/IconInternet.svelte";
@@ -15,7 +14,7 @@
 		webSearchToolId,
 	} from "$lib/utils/toolIds";
 	import type { Assistant } from "$lib/types/Assistant";
-	import { page } from "$app/stores";
+	import { page } from "$app/state";
 	import type { ToolFront } from "$lib/types/Tool";
 	import ToolLogo from "../ToolLogo.svelte";
 	import { goto } from "$app/navigation";
@@ -23,18 +22,38 @@
 	import IconAdd from "~icons/carbon/add";
 	import { captureScreen } from "$lib/utils/screenshot";
 	import IconScreenshot from "../icons/IconScreenshot.svelte";
+	import { loginModalOpen } from "$lib/stores/loginModal";
 
-	export let files: File[] = [];
-	export let mimeTypes: string[] = [];
+	import { isVirtualKeyboard } from "$lib/utils/isVirtualKeyboard";
+	interface Props {
+		files?: File[];
+		mimeTypes?: string[];
+		value?: string;
+		placeholder?: string;
+		loading?: boolean;
+		disabled?: boolean;
+		assistant?: Assistant | undefined;
+		modelHasTools?: boolean;
+		modelIsMultimodal?: boolean;
+		children?: import("svelte").Snippet;
+		onPaste?: (e: ClipboardEvent) => void;
+		focused?: boolean;
+	}
 
-	export let value = "";
-	export let placeholder = "";
-	export let loading = false;
-	export let disabled = false;
-	export let assistant: Assistant | undefined = undefined;
-
-	export let modelHasTools = false;
-	export let modelIsMultimodal = false;
+	let {
+		files = $bindable([]),
+		mimeTypes = [],
+		value = $bindable(""),
+		placeholder = "",
+		loading = false,
+		disabled = false,
+		assistant = undefined,
+		modelHasTools = false,
+		modelIsMultimodal = false,
+		children,
+		onPaste,
+		focused = $bindable(false),
+	}: Props = $props();
 
 	const onFileChange = async (e: Event) => {
 		if (!e.target) return;
@@ -48,42 +67,31 @@
 		}
 	};
 
-	let textareaElement: HTMLTextAreaElement;
-	let isCompositionOn = false;
+	let textareaElement: HTMLTextAreaElement | undefined = $state();
+	let isCompositionOn = $state(false);
 
 	const dispatch = createEventDispatcher<{ submit: void }>();
 
 	onMount(() => {
 		if (!isVirtualKeyboard()) {
-			textareaElement.focus();
+			textareaElement?.focus();
 		}
 		function onFormSubmit() {
 			adjustTextareaHeight();
 		}
 
-		const formEl = textareaElement.closest("form");
+		const formEl = textareaElement?.closest("form");
 		formEl?.addEventListener("submit", onFormSubmit);
 		return () => {
 			formEl?.removeEventListener("submit", onFormSubmit);
 		};
 	});
 
-	function isVirtualKeyboard(): boolean {
-		if (!browser) return false;
-
-		// Check for touch capability
-		if (navigator.maxTouchPoints > 0) return true;
-
-		// Check for touch events
-		if ("ontouchstart" in window) return true;
-
-		// Fallback to user agent string check
-		const userAgent = navigator.userAgent.toLowerCase();
-
-		return /android|webos|iphone|ipad|ipod|blackberry|iemobile|opera mini/i.test(userAgent);
-	}
-
 	function adjustTextareaHeight() {
+		if (!textareaElement) {
+			return;
+		}
+
 		textareaElement.style.height = "auto";
 		textareaElement.style.height = `${textareaElement.scrollHeight}px`;
 
@@ -101,6 +109,8 @@
 			value.trim() !== ""
 		) {
 			event.preventDefault();
+			adjustTextareaHeight();
+			tick();
 			dispatch("submit");
 		}
 	}
@@ -109,81 +119,105 @@
 
 	// tool section
 
-	$: webSearchIsOn = modelHasTools
-		? ($settings.tools?.includes(webSearchToolId) ?? false) ||
-		  ($settings.tools?.includes(fetchUrlToolId) ?? false)
-		: $webSearchParameters.useSearch;
-	$: imageGenIsOn = $settings.tools?.includes(imageGenToolId) ?? false;
+	let webSearchIsOn = $derived(
+		modelHasTools
+			? ($settings.tools?.includes(webSearchToolId) ?? false) ||
+					($settings.tools?.includes(fetchUrlToolId) ?? false)
+			: $webSearchParameters.useSearch
+	);
+	let imageGenIsOn = $derived($settings.tools?.includes(imageGenToolId) ?? false);
 
-	$: documentParserIsOn =
-		modelHasTools && files.length > 0 && files.some((file) => file.type.startsWith("application/"));
+	let documentParserIsOn = $derived(
+		modelHasTools && files.length > 0 && files.some((file) => file.type.startsWith("application/"))
+	);
 
-	$: extraTools = $page.data.tools
-		.filter((t: ToolFront) => $settings.tools?.includes(t._id))
-		.filter(
-			(t: ToolFront) =>
-				![documentParserToolId, imageGenToolId, webSearchToolId, fetchUrlToolId].includes(t._id)
-		) satisfies ToolFront[];
+	let extraTools = $derived(
+		page.data.tools
+			.filter((t: ToolFront) => $settings.tools?.includes(t._id))
+			.filter(
+				(t: ToolFront) =>
+					![documentParserToolId, imageGenToolId, webSearchToolId, fetchUrlToolId].includes(t._id)
+			) satisfies ToolFront[]
+	);
+
+	let showWebSearch = $derived(!assistant);
+	let showImageGen = $derived(modelHasTools && !assistant);
+	let showFileUpload = $derived((modelIsMultimodal || modelHasTools) && mimeTypes.length > 0);
+	let showExtraTools = $derived(modelHasTools && !assistant);
+
+	let showNoTools = $derived(!showWebSearch && !showImageGen && !showFileUpload && !showExtraTools);
 </script>
 
-<div class="flex min-h-full flex-1 flex-col" on:paste>
+<div class="flex min-h-full flex-1 flex-col" onpaste={onPaste}>
 	<textarea
 		rows="1"
 		tabindex="0"
 		inputmode="text"
-		class="scrollbar-custom max-h-[4lh] w-full resize-none overflow-y-auto overflow-x-hidden border-0 bg-transparent px-2.5 py-2.5 outline-none focus:ring-0 focus-visible:ring-0 max-sm:text-[16px] sm:px-3"
+		class="scrollbar-custom max-h-[4lh] w-full resize-none overflow-y-auto overflow-x-hidden border-0 bg-transparent px-2.5 py-2.5 outline-none focus:ring-0 focus-visible:ring-0 sm:px-3"
 		class:text-gray-400={disabled}
 		bind:value
 		bind:this={textareaElement}
-		on:keydown={handleKeydown}
-		on:compositionstart={() => (isCompositionOn = true)}
-		on:compositionend={() => (isCompositionOn = false)}
-		on:input={adjustTextareaHeight}
-		on:beforeinput
+		onkeydown={handleKeydown}
+		oncompositionstart={() => (isCompositionOn = true)}
+		oncompositionend={() => (isCompositionOn = false)}
+		oninput={adjustTextareaHeight}
+		onbeforeinput={(ev) => {
+			if (page.data.loginRequired) {
+				ev.preventDefault();
+				$loginModalOpen = true;
+			}
+		}}
 		{placeholder}
 		{disabled}
+		onfocus={() => (focused = true)}
+		onblur={() => (focused = false)}
 	></textarea>
 
-	{#if !assistant}
+	{#if !showNoTools}
 		<div
-			class="scrollbar-custom -ml-0.5 flex max-w-[calc(100%-40px)] flex-wrap items-center justify-start gap-2.5 px-3 pb-2.5 pt-1.5 text-gray-500 dark:text-gray-400 max-md:flex-nowrap max-md:overflow-x-auto sm:gap-2"
+			class={[
+				"scrollbar-custom -ml-0.5 flex max-w-[calc(100%-40px)] flex-wrap items-center justify-start gap-2.5 px-3 pb-2.5 pt-1.5 text-gray-500 dark:text-gray-400 max-md:flex-nowrap max-md:overflow-x-auto sm:gap-2",
+			]}
 		>
-			<HoverTooltip
-				label="Search the web"
-				position="top"
-				TooltipClassNames="text-xs !text-left !w-auto whitespace-nowrap !py-1 !mb-0 max-sm:hidden {webSearchIsOn
-					? 'hidden'
-					: ''}"
-			>
-				<button
-					class="base-tool"
-					class:active-tool={webSearchIsOn}
-					disabled={loading}
-					on:click|preventDefault={async () => {
-						if (modelHasTools) {
-							if (webSearchIsOn) {
-								await settings.instantSet({
-									tools: ($settings.tools ?? []).filter(
-										(t) => t !== webSearchToolId && t !== fetchUrlToolId
-									),
-								});
-							} else {
-								await settings.instantSet({
-									tools: [...($settings.tools ?? []), webSearchToolId, fetchUrlToolId],
-								});
-							}
-						} else {
-							$webSearchParameters.useSearch = !webSearchIsOn;
-						}
-					}}
+			{#if showWebSearch}
+				<HoverTooltip
+					label="Search the web"
+					position="top"
+					TooltipClassNames="text-xs !text-left !w-auto whitespace-nowrap !py-1 !mb-0 max-sm:hidden {webSearchIsOn
+						? 'hidden'
+						: ''}"
 				>
-					<IconInternet classNames="text-xl" />
-					{#if webSearchIsOn}
-						Search
-					{/if}
-				</button>
-			</HoverTooltip>
-			{#if modelHasTools}
+					<button
+						class="base-tool"
+						class:active-tool={webSearchIsOn}
+						disabled={loading}
+						onclick={async (e) => {
+							e.preventDefault();
+							if (modelHasTools) {
+								if (webSearchIsOn) {
+									await settings.instantSet({
+										tools: ($settings.tools ?? []).filter(
+											(t) => t !== webSearchToolId && t !== fetchUrlToolId
+										),
+									});
+								} else {
+									await settings.instantSet({
+										tools: [...($settings.tools ?? []), webSearchToolId, fetchUrlToolId],
+									});
+								}
+							} else {
+								$webSearchParameters.useSearch = !webSearchIsOn;
+							}
+						}}
+					>
+						<IconInternet classNames="text-xl" />
+						{#if webSearchIsOn}
+							Search
+						{/if}
+					</button>
+				</HoverTooltip>
+			{/if}
+			{#if showImageGen}
 				<HoverTooltip
 					label="Generate	images"
 					position="top"
@@ -195,7 +229,8 @@
 						class="base-tool"
 						class:active-tool={imageGenIsOn}
 						disabled={loading}
-						on:click|preventDefault={async () => {
+						onclick={async (e) => {
+							e.preventDefault();
 							if (modelHasTools) {
 								if (imageGenIsOn) {
 									await settings.instantSet({
@@ -216,7 +251,7 @@
 					</button>
 				</HoverTooltip>
 			{/if}
-			{#if modelIsMultimodal || modelHasTools}
+			{#if showFileUpload}
 				{@const mimeTypesString = mimeTypes
 					.map((m) => {
 						// if the mime type ends in *, grab the first part so image/* becomes image
@@ -227,7 +262,7 @@
 						return m.split("/")[1];
 					})
 					.join(", ")}
-				<form class="flex items-center">
+				<div class="flex items-center">
 					<HoverTooltip
 						label={mimeTypesString.includes("*")
 							? "Upload any file"
@@ -241,7 +276,7 @@
 								class="absolute hidden size-0"
 								aria-label="Upload file"
 								type="file"
-								on:change={onFileChange}
+								onchange={onFileChange}
 								accept={mimeTypes.join(",")}
 							/>
 							<IconPaperclip classNames="text-xl" />
@@ -250,7 +285,7 @@
 							{/if}
 						</label>
 					</HoverTooltip>
-				</form>
+				</div>
 				{#if mimeTypes.includes("image/*")}
 					<HoverTooltip
 						label="Capture screenshot"
@@ -259,7 +294,8 @@
 					>
 						<button
 							class="base-tool"
-							on:click|preventDefault={async () => {
+							onclick={async (e) => {
+								e.preventDefault();
 								const screenshot = await captureScreen();
 
 								// Convert base64 to blob
@@ -277,21 +313,22 @@
 					</HoverTooltip>
 				{/if}
 			{/if}
-			{#if modelHasTools}
+			{#if showExtraTools}
 				{#each extraTools as tool}
 					<button
 						class="active-tool base-tool"
 						disabled={loading}
-						on:click|preventDefault={async () => {
+						onclick={async (e) => {
+							e.preventDefault();
 							goto(`${base}/tools/${tool._id}`);
 						}}
 					>
-						<ToolLogo icon={tool.icon} color={tool.color} size="xs" />
+						{#key tool.icon + tool.color}
+							<ToolLogo icon={tool.icon} color={tool.color} size="xs" />
+						{/key}
 						{tool.displayName}
 					</button>
 				{/each}
-			{/if}
-			{#if modelHasTools}
 				<HoverTooltip
 					label="Browse more tools"
 					position="right"
@@ -308,22 +345,15 @@
 			{/if}
 		</div>
 	{/if}
-	<slot />
+	{@render children?.()}
 </div>
 
 <style lang="postcss">
-	pre,
-	textarea {
+	:global(pre),
+	:global(textarea) {
 		font-family: inherit;
 		box-sizing: border-box;
 		line-height: 1.5;
-	}
-
-	.base-tool {
-		@apply flex h-[1.6rem] items-center gap-[.2rem] whitespace-nowrap border border-transparent text-xs outline-none transition-all focus:outline-none active:outline-none dark:hover:text-gray-300 sm:hover:text-purple-600;
-	}
-
-	.active-tool {
-		@apply rounded-full !border-purple-200 bg-purple-100 pl-1 pr-2 text-purple-600 hover:text-purple-600  dark:!border-purple-700 dark:bg-purple-600/40 dark:text-purple-200;
+		font-size: 16px;
 	}
 </style>

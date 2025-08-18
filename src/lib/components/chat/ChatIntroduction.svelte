@@ -1,5 +1,4 @@
 <script lang="ts">
-	import { env as envPublic } from "$env/dynamic/public";
 	import Logo from "$lib/components/icons/Logo.svelte";
 	import { createEventDispatcher } from "svelte";
 	import IconGear from "~icons/bi/gear-fill";
@@ -8,12 +7,15 @@
 	import ModelCardMetadata from "../ModelCardMetadata.svelte";
 	import { base } from "$app/paths";
 	import JSON5 from "json5";
+	import { usePublicConfig } from "$lib/utils/PublicConfig.svelte";
 
-	export let currentModel: Model;
+	const publicConfig = usePublicConfig();
 
-	const announcementBanners = envPublic.PUBLIC_ANNOUNCEMENT_BANNERS
-		? JSON5.parse(envPublic.PUBLIC_ANNOUNCEMENT_BANNERS)
-		: [];
+	interface Props {
+		currentModel: Model;
+	}
+
+	let { currentModel }: Props = $props();
 
 	const dispatch = createEventDispatcher<{ message: string }>();
 </script>
@@ -26,26 +28,30 @@
 				{envPublic.PUBLIC_APP_NAME}
 			</div>
 			<p class="text-base text-gray-600 dark:text-gray-400">
-				{envPublic.PUBLIC_APP_DESCRIPTION ||
+				{publicConfig.PUBLIC_APP_DESCRIPTION ||
 					"Making the community's best AI chat models available to everyone."}
 			</p>
 		</div>
 	</div>
-	<div class="overflow-hidden rounded-xl border dark:border-gray-800">
-		<div class="flex p-3">
-			<div>
-				<div class="text-sm text-gray-600 dark:text-gray-400">Current Model</div>
-				<div class="flex items-center gap-1.5 font-semibold max-sm:text-smd">
-					{#if currentModel.logoUrl}
-						<img
-							class=" overflown aspect-square size-4 rounded border dark:border-gray-700"
-							src={currentModel.logoUrl}
-							alt=""
-						/>
-					{:else}
-						<div class="size-4 rounded border border-transparent bg-gray-300 dark:bg-gray-800" ></div>
-					{/if}
-					{currentModel.displayName}
+	<div class="lg:col-span-2 lg:pl-24">
+		<div class="overflow-hidden rounded-xl border dark:border-gray-800">
+			<div class="flex p-3">
+				<div>
+					<div class="text-sm text-gray-600 dark:text-gray-400">Current Model</div>
+					<div class="flex items-center gap-1.5 font-semibold max-sm:text-smd">
+						{#if currentModel.logoUrl}
+							<img
+								class=" overflown aspect-square size-4 rounded border dark:border-gray-700"
+								src={currentModel.logoUrl}
+								alt=""
+							/>
+						{:else}
+							<div
+								class="size-4 rounded border border-transparent bg-gray-300 dark:bg-gray-800"
+							></div>
+						{/if}
+						{currentModel.displayName}
+					</div>
 				</div>
 			</div>
 			<a
@@ -59,18 +65,21 @@
 	</div>
 	{#if currentModel.promptExamples}
 		<div class="lg:col-span-3 lg:mt-6">
-			<p class="mb-3 text-gray-600 dark:text-gray-300">Examples</p>
-			<div class="grid gap-3 lg:grid-cols-3 lg:gap-5">
+			<p class="mb-3 text-center text-gray-600 dark:text-gray-300 lg:text-left">Examples</p>
+			<div
+				class="flex max-h-60 gap-2 overflow-x-auto pb-2 text-center scrollbar-thin scrollbar-thumb-gray-300 dark:scrollbar-thumb-gray-700 lg:grid lg:grid-cols-3 lg:overflow-y-auto lg:text-left"
+			>
 				{#each currentModel.promptExamples as example}
 					<button
 						type="button"
-						class="rounded-xl border bg-gray-50 p-3 text-gray-600 hover:bg-gray-100 dark:border-gray-800 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-gray-700 max-xl:text-sm xl:p-3.5"
-						on:click={() => dispatch("message", example.prompt)}
+						class="flex-shrink-0 rounded-xl border bg-gray-50 p-2.5 text-sm text-gray-600 hover:bg-gray-100 dark:border-gray-800 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-gray-700 sm:p-3 lg:w-full xl:p-3.5 xl:text-base"
+						onclick={() => dispatch("message", example.prompt)}
 					>
 						{example.title}
 					</button>
 				{/each}
 			</div>
-		</div>{/if}
+		</div>
+	{/if}
 	<div class="h-40 sm:h-24"></div>
 </div>

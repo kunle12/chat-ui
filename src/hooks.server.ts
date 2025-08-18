@@ -1,42 +1,54 @@
-import { env } from "$env/dynamic/private";
-import { env as envPublic } from "$env/dynamic/public";
-import type { Handle, HandleServerError } from "@sveltejs/kit";
+import { config, ready } from "$lib/server/config";
+import type { Handle, HandleServerError, ServerInit, HandleFetch } from "@sveltejs/kit";
 import { collections } from "$lib/server/database";
 import { base } from "$app/paths";
-import { findUser, refreshSessionCookie, requiresUser } from "$lib/server/auth";
+import { authenticateRequest, refreshSessionCookie, requiresUser } from "$lib/server/auth";
 import { ERROR_MESSAGES } from "$lib/stores/errors";
-import { sha256 } from "$lib/utils/sha256";
 import { addWeeks } from "date-fns";
 import { checkAndRunMigrations } from "$lib/migrations/migrations";
-import { building } from "$app/environment";
+import { building, dev } from "$app/environment";
 import { logger } from "$lib/server/logger";
 import { AbortedGenerations } from "$lib/server/abortedGenerations";
 import { MetricsServer } from "$lib/server/metrics";
 import { initExitHandler } from "$lib/server/exitHandler";
-import { ObjectId } from "mongodb";
 import { refreshAssistantsCounts } from "$lib/jobs/refresh-assistants-counts";
 import { refreshConversationStats } from "$lib/jobs/refresh-conversation-stats";
+import { adminTokenManager } from "$lib/server/adminToken";
+import { isHostLocalhost } from "$lib/server/isURLLocal";
 
-// TODO: move this code on a started server hook, instead of using a "building" flag
-if (!building) {
-	// Set HF_TOKEN as a process variable for Transformers.JS to see it
-	process.env.HF_TOKEN ??= env.HF_TOKEN;
+export const init: ServerInit = async () => {
+	// Wait for config to be fully loaded
+	await ready;
 
-	logger.info("Starting server...");
-	initExitHandler();
+	// TODO: move this code on a started server hook, instead of using a "building" flag
+	if (!building) {
+		// Set HF_TOKEN as a process variable for Transformers.JS to see it
+		process.env.HF_TOKEN ??= config.HF_TOKEN;
 
-	checkAndRunMigrations();
-	if (env.ENABLE_ASSISTANTS) {
-		refreshAssistantsCounts();
+		logger.info("Starting server...");
+		initExitHandler();
+
+		checkAndRunMigrations();
+		if (config.ENABLE_ASSISTANTS) {
+			refreshAssistantsCounts();
+		}
+		refreshConversationStats();
+
+		// Init metrics server
+		MetricsServer.getInstance();
+
+		// Init AbortedGenerations refresh process
+		AbortedGenerations.getInstance();
+
+		adminTokenManager.displayToken();
+
+		if (config.EXPOSE_API) {
+			logger.warn(
+				"The EXPOSE_API flag has been deprecated. The API is now required for chat-ui to work."
+			);
+		}
 	}
-	refreshConversationStats();
-
-	// Init metrics server
-	MetricsServer.getInstance();
-
-	// Init AbortedGenerations refresh process
-	AbortedGenerations.getInstance();
-}
+};
 
 export const handleError: HandleServerError = async ({ error, event, status, message }) => {
 	// handle 404
@@ -72,16 +84,16 @@ export const handleError: HandleServerError = async ({ error, event, status, mes
 };
 
 export const handle: Handle = async ({ event, resolve }) => {
+	await ready.then(() => {
+		config.checkForUpdates();
+	});
+
 	logger.debug({
 		locals: event.locals,
 		url: event.url.pathname,
 		params: event.params,
 		request: event.request,
 	});
-
-	if (event.url.pathname.startsWith(`${base}/api/`) && env.EXPOSE_API !== "true") {
-		return new Response("API is disabled", { status: 403 });
-	}
 
 	function errorResponse(status: number, message: string) {
 		const sendJson =
@@ -96,7 +108,7 @@ export const handle: Handle = async ({ event, resolve }) => {
 	}
 
 	if (event.url.pathname.startsWith(`${base}/admin/`) || event.url.pathname === `${base}/admin`) {
-		const ADMIN_SECRET = env.ADMIN_API_SECRET || env.PARQUET_EXPORT_SECRET;
+		const ADMIN_SECRET = config.ADMIN_API_SECRET || config.PARQUET_EXPORT_SECRET;
 
 		if (!ADMIN_SECRET) {
 			return errorResponse(500, "Admin API is not configured");
@@ -107,105 +119,16 @@ export const handle: Handle = async ({ event, resolve }) => {
 		}
 	}
 
-	const token = event.cookies.get(env.COOKIE_NAME);
+	const auth = await authenticateRequest(
+		{ type: "svelte", value: event.request.headers },
+		{ type: "svelte", value: event.cookies }
+	);
 
-	// if the trusted email header is set we use it to get the user email
-	const email = env.TRUSTED_EMAIL_HEADER
-		? event.request.headers.get(env.TRUSTED_EMAIL_HEADER)
-		: null;
+	event.locals.user = auth.user || undefined;
+	event.locals.sessionId = auth.sessionId;
 
-	let secretSessionId: string | null = null;
-	let sessionId: string | null = null;
-
-	if (email) {
-		secretSessionId = sessionId = await sha256(email);
-
-		event.locals.user = {
-			// generate id based on email
-			_id: new ObjectId(sessionId.slice(0, 24)),
-			name: email,
-			email,
-			createdAt: new Date(),
-			updatedAt: new Date(),
-			hfUserId: email,
-			avatarUrl: "",
-			logoutDisabled: true,
-		};
-	} else if (token) {
-		secretSessionId = token;
-		sessionId = await sha256(token);
-
-		const user = await findUser(sessionId);
-
-		if (user) {
-			event.locals.user = user;
-		}
-	} else if (event.url.pathname.startsWith(`${base}/api/`) && env.USE_HF_TOKEN_IN_API === "true") {
-		// if the request goes to the API and no user is available in the header
-		// check if a bearer token is available in the Authorization header
-
-		const authorization = event.request.headers.get("Authorization");
-
-		if (authorization && authorization.startsWith("Bearer ")) {
-			const token = authorization.slice(7);
-
-			const hash = await sha256(token);
-
-			sessionId = secretSessionId = hash;
-
-			// check if the hash is in the DB and get the user
-			// else check against https://huggingface.co/api/whoami-v2
-
-			const cacheHit = await collections.tokenCaches.findOne({ tokenHash: hash });
-
-			if (cacheHit) {
-				const user = await collections.users.findOne({ hfUserId: cacheHit.userId });
-
-				if (!user) {
-					return errorResponse(500, "User not found");
-				}
-
-				event.locals.user = user;
-			} else {
-				const response = await fetch("https://huggingface.co/api/whoami-v2", {
-					headers: {
-						Authorization: `Bearer ${token}`,
-					},
-				});
-
-				if (!response.ok) {
-					return errorResponse(401, "Unauthorized");
-				}
-
-				const data = await response.json();
-				const user = await collections.users.findOne({ hfUserId: data.id });
-
-				if (!user) {
-					return errorResponse(500, "User not found");
-				}
-
-				await collections.tokenCaches.insertOne({
-					tokenHash: hash,
-					userId: data.id,
-					createdAt: new Date(),
-					updatedAt: new Date(),
-				});
-
-				event.locals.user = user;
-			}
-		}
-	}
-
-	if (!sessionId || !secretSessionId) {
-		secretSessionId = crypto.randomUUID();
-		sessionId = await sha256(secretSessionId);
-
-		if (await collections.sessions.findOne({ sessionId })) {
-			return errorResponse(500, "Session ID collision");
-		}
-	}
-
-	event.locals.sessionId = sessionId;
+	event.locals.isAdmin =
+		event.locals.user?.isAdmin || adminTokenManager.isAdmin(event.locals.sessionId);
 
 	// CSRF protection
 	const requestContentType = event.request.headers.get("content-type")?.split(";")[0] ?? "";
@@ -226,7 +149,7 @@ export const handle: Handle = async ({ event, resolve }) => {
 
 			const validOrigins = [
 				new URL(event.request.url).host,
-				...(envPublic.PUBLIC_ORIGIN ? [new URL(envPublic.PUBLIC_ORIGIN).host] : []),
+				...(config.PUBLIC_ORIGIN ? [new URL(config.PUBLIC_ORIGIN).host] : []),
 			];
 
 			if (!validOrigins.includes(new URL(origin).host)) {
@@ -235,12 +158,16 @@ export const handle: Handle = async ({ event, resolve }) => {
 		}
 	}
 
-	if (event.request.method === "POST") {
-		// if the request is a POST request we refresh the cookie
-		refreshSessionCookie(event.cookies, secretSessionId);
+	if (
+		event.request.method === "POST" ||
+		event.url.pathname.startsWith(`${base}/login`) ||
+		event.url.pathname.startsWith(`${base}/login/callback`)
+	) {
+		// if the request is a POST request or login-related we refresh the cookie
+		refreshSessionCookie(event.cookies, auth.secretSessionId);
 
 		await collections.sessions.updateOne(
-			{ sessionId },
+			{ sessionId: auth.sessionId },
 			{ $set: { updatedAt: new Date(), expiresAt: addWeeks(new Date(), 2) } }
 		);
 	}
@@ -254,7 +181,7 @@ export const handle: Handle = async ({ event, resolve }) => {
 		if (
 			!event.locals.user &&
 			requiresUser &&
-			!((env.MESSAGES_BEFORE_LOGIN ? parseInt(env.MESSAGES_BEFORE_LOGIN) : 0) > 0)
+			!((config.MESSAGES_BEFORE_LOGIN ? parseInt(config.MESSAGES_BEFORE_LOGIN) : 0) > 0)
 		) {
 			return errorResponse(401, ERROR_MESSAGES.authOnly);
 		}
@@ -265,7 +192,7 @@ export const handle: Handle = async ({ event, resolve }) => {
 		if (
 			!requiresUser &&
 			!event.url.pathname.startsWith(`${base}/settings`) &&
-			envPublic.PUBLIC_APP_DISCLAIMER === "1"
+			config.PUBLIC_APP_DISCLAIMER === "1"
 		) {
 			const hasAcceptedEthicsModal = await collections.settings.countDocuments({
 				sessionId: event.locals.sessionId,
@@ -288,14 +215,64 @@ export const handle: Handle = async ({ event, resolve }) => {
 			}
 			replaced = true;
 
-			return chunk.html.replace("%gaId%", envPublic.PUBLIC_GOOGLE_ANALYTICS_ID);
+			return chunk.html.replace("%gaId%", config.PUBLIC_GOOGLE_ANALYTICS_ID);
+		},
+		filterSerializedResponseHeaders: (header) => {
+			return header.includes("content-type");
 		},
 	});
 
 	// Add CSP header to disallow framing if ALLOW_IFRAME is not "true"
-	if (env.ALLOW_IFRAME !== "true") {
+	if (config.ALLOW_IFRAME !== "true") {
 		response.headers.append("Content-Security-Policy", "frame-ancestors 'none';");
 	}
 
+	if (
+		event.url.pathname.startsWith(`${base}/login/callback`) ||
+		event.url.pathname.startsWith(`${base}/login`)
+	) {
+		response.headers.append("Cache-Control", "no-store");
+	}
+
+	if (event.url.pathname.startsWith(`${base}/api/`)) {
+		// get origin from the request
+		const requestOrigin = event.request.headers.get("origin");
+
+		// get origin from the config if its defined
+		let allowedOrigin = config.PUBLIC_ORIGIN ? new URL(config.PUBLIC_ORIGIN).origin : undefined;
+
+		if (
+			dev || // if we're in dev mode
+			!requestOrigin || // or the origin is null (SSR)
+			isHostLocalhost(new URL(requestOrigin).hostname) // or the origin is localhost
+		) {
+			allowedOrigin = "*"; // allow all origins
+		} else if (allowedOrigin === requestOrigin) {
+			allowedOrigin = requestOrigin; // echo back the caller
+		}
+
+		if (allowedOrigin) {
+			response.headers.set("Access-Control-Allow-Origin", allowedOrigin);
+			response.headers.set(
+				"Access-Control-Allow-Methods",
+				"GET, POST, PUT, PATCH, DELETE, OPTIONS"
+			);
+			response.headers.set("Access-Control-Allow-Headers", "Content-Type, Authorization");
+		}
+	}
 	return response;
+};
+
+export const handleFetch: HandleFetch = async ({ event, request, fetch }) => {
+	if (isHostLocalhost(new URL(request.url).hostname)) {
+		const cookieHeader = event.request.headers.get("cookie");
+		if (cookieHeader) {
+			const headers = new Headers(request.headers);
+			headers.set("cookie", cookieHeader);
+
+			return fetch(new Request(request, { headers }));
+		}
+	}
+
+	return fetch(request);
 };

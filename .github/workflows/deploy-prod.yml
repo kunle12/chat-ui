@@ -24,7 +24,7 @@ jobs:
             huggingface/chat-ui
           tags: |
             type=raw,value=latest,enable={{is_default_branch}}
-            type=sha,enable={{is_default_branch}}
+            type=sha,enable=true,prefix=sha-,format=short,sha-len=8
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
@@ -49,6 +49,7 @@ jobs:
             APP_BASE=/chat
             PUBLIC_APP_COLOR=yellow
             PUBLIC_COMMIT_SHA=${{ env.GITHUB_SHA_SHORT }}
+            SKIP_LLAMA_CPP_BUILD=true
   deploy:
     name: Deploy on prod
     runs-on: ubuntu-latest
@@ -69,11 +70,11 @@ jobs:
       - name: Deploy on infra-deployments
         uses: aurelien-baudet/workflow-dispatch@v2
         with:
-          workflow: Update application values
+          workflow: Update application single value
           repo: huggingface/infra-deployments
           wait-for-completion: true
           wait-for-completion-interval: 10s
           display-workflow-run-url-interval: 10s
           ref: refs/heads/main
           token: ${{ secrets.GIT_TOKEN_INFRA_DEPLOYMENT }}
-          inputs: '{"path": "hub/chat-ui/chat-ui.yaml", "values": ${{ env.VALUES }}, "url": "${{ github.event.head_commit.url }}"}'
+          inputs: '{"path": "hub/chat-ui/chat-ui.yaml", "value": ${{ env.VALUES }}, "url": "${{ github.event.head_commit.url }}"}'

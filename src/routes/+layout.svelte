@@ -1,12 +1,10 @@
 <script lang="ts">
 	import "../styles/main.css";
 
-	import { onDestroy, onMount } from "svelte";
+	import { onDestroy, onMount, untrack } from "svelte";
 	import { goto } from "$app/navigation";
 	import { base } from "$app/paths";
 	import { page } from "$app/stores";
-
-	import { env as envPublic } from "$env/dynamic/public";
 
 	import { error } from "$lib/stores/errors";
 	import { createSettingsStore } from "$lib/stores/settings";
@@ -21,95 +19,100 @@
 	import ExpandNavigation from "$lib/components/ExpandNavigation.svelte";
 	import { loginModalOpen } from "$lib/stores/loginModal";
 	import LoginModal from "$lib/components/LoginModal.svelte";
+	import OverloadedModal from "$lib/components/OverloadedModal.svelte";
+	import Search from "$lib/components/chat/Search.svelte";
+	import { setContext } from "svelte";
+	import { handleResponse, useAPIClient } from "$lib/APIClient";
 
-	export let data;
+	let { data = $bindable(), children } = $props();
 
-	let isNavOpen = false;
-	let isNavCollapsed = false;
+	setContext("publicConfig", data.publicConfig);
+
+	const publicConfig = data.publicConfig;
+	const client = useAPIClient();
+
+	let conversations = $state(data.conversations);
+	$effect(() => {
+		data.conversations && untrack(() => (conversations = data.conversations));
+	});
+
+	let isNavCollapsed = $state(false);
+
+	let overloadedModalOpen = $state(false);
 
 	let errorToastTimeout: ReturnType<typeof setTimeout>;
-	let currentError: string | null;
+	let currentError: string | undefined = $state();
 
 	async function onError() {
 		// If a new different error comes, wait for the current error to hide first
 		if ($error && currentError && $error !== currentError) {
 			clearTimeout(errorToastTimeout);
-			currentError = null;
+			currentError = undefined;
 			await new Promise((resolve) => setTimeout(resolve, 300));
 		}
 
 		currentError = $error;
 
+		if (currentError === "Model is overloaded") {
+			overloadedModalOpen = true;
+		}
 		errorToastTimeout = setTimeout(() => {
-			$error = null;
-			currentError = null;
-		}, 3000);
+			$error = undefined;
+			currentError = undefined;
+		}, 10000);
 	}
 
 	async function deleteConversation(id: string) {
-		try {
-			const res = await fetch(`${base}/conversation/${id}`, {
-				method: "DELETE",
-				headers: {
-					"Content-Type": "application/json",
-				},
+		client
+			.conversations({ id })
+			.delete()
+			.then(handleResponse)
+			.then(async () => {
+				conversations = conversations.filter((conv) => conv.id !== id);
+
+				if ($page.params.id === id) {
+					await goto(`${base}/`, { invalidateAll: true });
+				}
+			})
+			.catch((err) => {
+				console.error(err);
+				$error = String(err);
 			});
-
-			if (!res.ok) {
-				$error = "Error while deleting conversation, try again.";
-				return;
-			}
-
-			data.conversations = data.conversations.filter((conv) => conv.id !== id);
-
-			if ($page.params.id === id) {
-				await goto(`${base}/`, { invalidateAll: true });
-			}
-		} catch (err) {
-			console.error(err);
-			$error = String(err);
-		}
 	}
 
 	async function editConversationTitle(id: string, title: string) {
-		try {
-			const res = await fetch(`${base}/conversation/${id}`, {
-				method: "PATCH",
-				headers: {
-					"Content-Type": "application/json",
-				},
-				body: JSON.stringify({ title }),
+		client
+			.conversations({ id })
+			.patch({ title })
+			.then(handleResponse)
+			.then(async () => {
+				conversations = conversations.map((conv) => (conv.id === id ? { ...conv, title } : conv));
+			})
+			.catch((err) => {
+				console.error(err);
+				$error = String(err);
 			});
-
-			if (!res.ok) {
-				$error = "Error while editing title, try again.";
-				return;
-			}
-
-			data.conversations = data.conversations.map((conv) =>
-				conv.id === id ? { ...conv, title } : conv
-			);
-		} catch (err) {
-			console.error(err);
-			$error = String(err);
-		}
 	}
 
 	onDestroy(() => {
 		clearTimeout(errorToastTimeout);
 	});
 
-	$: if ($error) onError();
+	$effect(() => {
+		if ($error) onError();
+	});
 
-	$: if ($titleUpdate) {
-		const convIdx = data.conversations.findIndex(({ id }) => id === $titleUpdate?.convId);
+	$effect(() => {
+		if ($titleUpdate) {
+			const convIdx = conversations.findIndex(({ id }) => id === $titleUpdate?.convId);
 
-		if (convIdx != -1) {
-			data.conversations[convIdx].title = $titleUpdate?.title ?? data.conversations[convIdx].title;
+			if (convIdx != -1) {
+				conversations[convIdx].title = $titleUpdate?.title ?? conversations[convIdx].title;
+			}
+
+			$titleUpdate = null;
 		}
-
-		$titleUpdate = null;
-	}
+	});
 
 	const settings = createSettingsStore(data.settings);
 
@@ -143,23 +146,35 @@
 					});
 				});
 		}
+
+		if ($page.url.searchParams.has("token")) {
+			const token = $page.url.searchParams.get("token");
+
+			await fetch(`${base}/api/user/validate-token`, {
+				method: "POST",
+				body: JSON.stringify({ token }),
+			}).then(() => {
+				goto(`${base}/`, { invalidateAll: true });
+			});
+		}
 	});
 
-	$: mobileNavTitle = ["/models", "/assistants", "/privacy", "/tools"].includes(
-		$page.route.id ?? ""
-	)
-		? ""
-		: data.conversations.find((conv) => conv.id === $page.params.id)?.title;
+	let mobileNavTitle = $derived(
+		["/models", "/assistants", "/privacy", "/tools"].includes($page.route.id ?? "")
+			? ""
+			: conversations.find((conv) => conv.id === $page.params.id)?.title
+	);
 
-	$: showDisclaimer =
+	let showDisclaimer = $derived(
 		!$settings.ethicsModalAccepted &&
-		$page.url.pathname !== `${base}/privacy` &&
-		envPublic.PUBLIC_APP_DISCLAIMER === "1" &&
-		!($page.data.shared === true);
+			$page.url.pathname !== `${base}/privacy` &&
+			publicConfig.PUBLIC_APP_DISCLAIMER === "1" &&
+			!($page.data.shared === true)
+	);
 </script>
 
 <svelte:head>
-	<title>{envPublic.PUBLIC_APP_NAME}</title>
+	<title>{publicConfig.PUBLIC_APP_NAME}</title>
 	<meta name="description" content="The first open source alternative to ChatGPT. 💪" />
 	<meta name="twitter:card" content="summary_large_image" />
 	<meta name="twitter:site" content="@huggingface" />
@@ -167,49 +182,27 @@
 	<!-- use those meta tags everywhere except on the share assistant page -->
 	<!-- feel free to refacto if there's a better way -->
 	{#if !$page.url.pathname.includes("/assistant/") && $page.route.id !== "/assistants" && !$page.url.pathname.includes("/models/") && !$page.url.pathname.includes("/tools")}
-		<meta property="og:title" content={envPublic.PUBLIC_APP_NAME} />
+		<meta property="og:title" content={publicConfig.PUBLIC_APP_NAME} />
 		<meta property="og:type" content="website" />
-		<meta property="og:url" content="{envPublic.PUBLIC_ORIGIN || $page.url.origin}{base}" />
-		<meta
-			property="og:image"
-			content="{envPublic.PUBLIC_ORIGIN ||
-				$page.url.origin}{base}/{envPublic.PUBLIC_APP_ASSETS}/thumbnail.png"
-		/>
-		<meta property="og:description" content={envPublic.PUBLIC_APP_DESCRIPTION} />
+		<meta property="og:url" content="{publicConfig.PUBLIC_ORIGIN || $page.url.origin}{base}" />
+		<meta property="og:image" content="{publicConfig.assetPath}/thumbnail.png" />
+		<meta property="og:description" content={publicConfig.PUBLIC_APP_DESCRIPTION} />
 	{/if}
-	<link
-		rel="icon"
-		href="{envPublic.PUBLIC_ORIGIN ||
-			$page.url.origin}{base}/{envPublic.PUBLIC_APP_ASSETS}/favicon.ico"
-		sizes="32x32"
-	/>
-	<link
-		rel="icon"
-		href="{envPublic.PUBLIC_ORIGIN ||
-			$page.url.origin}{base}/{envPublic.PUBLIC_APP_ASSETS}/icon.svg"
-		type="image/svg+xml"
-	/>
-	<link
-		rel="apple-touch-icon"
-		href="{envPublic.PUBLIC_ORIGIN ||
-			$page.url.origin}{base}/{envPublic.PUBLIC_APP_ASSETS}/apple-touch-icon.png"
-	/>
-	<link
-		rel="manifest"
-		href="{envPublic.PUBLIC_ORIGIN ||
-			$page.url.origin}{base}/{envPublic.PUBLIC_APP_ASSETS}/manifest.json"
-	/>
+	<link rel="icon" href="{publicConfig.assetPath}/favicon.ico" sizes="32x32" />
+	<link rel="icon" href="{publicConfig.assetPath}/icon.svg" type="image/svg+xml" />
+	<link rel="apple-touch-icon" href="{publicConfig.assetPath}/apple-touch-icon.png" />
+	<link rel="manifest" href="{publicConfig.assetPath}/manifest.json" />
 
-	{#if envPublic.PUBLIC_PLAUSIBLE_SCRIPT_URL && envPublic.PUBLIC_ORIGIN}
+	{#if publicConfig.PUBLIC_PLAUSIBLE_SCRIPT_URL && publicConfig.PUBLIC_ORIGIN}
 		<script
 			defer
-			data-domain={new URL(envPublic.PUBLIC_ORIGIN).hostname}
-			src={envPublic.PUBLIC_PLAUSIBLE_SCRIPT_URL}
+			data-domain={new URL(publicConfig.PUBLIC_ORIGIN).hostname}
+			src={publicConfig.PUBLIC_PLAUSIBLE_SCRIPT_URL}
 		></script>
 	{/if}
 
-	{#if envPublic.PUBLIC_APPLE_APP_ID}
-		<meta name="apple-itunes-app" content={`app-id=${envPublic.PUBLIC_APPLE_APP_ID}`} />
+	{#if publicConfig.PUBLIC_APPLE_APP_ID}
+		<meta name="apple-itunes-app" content={`app-id=${publicConfig.PUBLIC_APPLE_APP_ID}`} />
 	{/if}
 </svelte:head>
 
@@ -225,6 +218,12 @@
 	/>
 {/if}
 
+{#if overloadedModalOpen && publicConfig.isHuggingChat}
+	<OverloadedModal onClose={() => (overloadedModalOpen = false)} />
+{/if}
+
+<Search />
+
 <div
 	class="fixed grid h-full w-screen grid-cols-1 grid-rows-[auto,1fr] overflow-hidden text-smd {!isNavCollapsed
 		? 'md:grid-cols-[290px,1fr]'
@@ -232,17 +231,17 @@
 >
 	<ExpandNavigation
 		isCollapsed={isNavCollapsed}
-		on:click={() => (isNavCollapsed = !isNavCollapsed)}
+		onClick={() => (isNavCollapsed = !isNavCollapsed)}
 		classNames="absolute inset-y-0 z-10 my-auto {!isNavCollapsed
 			? 'left-[290px]'
 			: 'left-0'} *:transition-transform"
 	/>
 
-	<MobileNav isOpen={isNavOpen} on:toggle={(ev) => (isNavOpen = ev.detail)} title={mobileNavTitle}>
+	<MobileNav title={mobileNavTitle}>
 		<NavMenu
-			conversations={data.conversations}
+			{conversations}
 			user={data.user}
-			canLogin={data.user === undefined && data.loginEnabled}
+			canLogin={!data.user && data.loginEnabled}
 			on:shareConversation={(ev) => shareConversation(ev.detail.id, ev.detail.title)}
 			on:deleteConversation={(ev) => deleteConversation(ev.detail)}
 			on:editConversationTitle={(ev) => editConversationTitle(ev.detail.id, ev.detail.title)}
@@ -252,9 +251,9 @@
 		class="grid max-h-screen grid-cols-1 grid-rows-[auto,1fr,auto] overflow-hidden *:w-[290px] max-md:hidden"
 	>
 		<NavMenu
-			conversations={data.conversations}
+			{conversations}
 			user={data.user}
-			canLogin={data.user === undefined && data.loginEnabled}
+			canLogin={!data.user && data.loginEnabled}
 			on:shareConversation={(ev) => shareConversation(ev.detail.id, ev.detail.title)}
 			on:deleteConversation={(ev) => deleteConversation(ev.detail)}
 			on:editConversationTitle={(ev) => editConversationTitle(ev.detail.id, ev.detail.title)}
@@ -263,5 +262,5 @@
 	{#if currentError}
 		<Toast message={currentError} />
 	{/if}
-	<slot />
+	{@render children?.()}
 </div>

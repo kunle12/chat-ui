@@ -33,7 +33,7 @@ export async function endpointAws(
 	let createSignedFetcher;
 	try {
 		createSignedFetcher = (await import("aws-sigv4-fetch")).createSignedFetcher;
-	} catch (e) {
+	} catch {
 		throw new Error("Failed to import aws-sigv4-fetch");
 	}
 
@@ -64,7 +64,6 @@ export async function endpointAws(
 				inputs: prompt,
 			},
 			{
-				use_cache: false,
 				fetch: signedFetch,
 			}
 		);

@@ -8,40 +8,45 @@
 
 	import CarbonTools from "~icons/carbon/tools";
 	import { ToolResultStatus, type ToolFront } from "$lib/types/Tool";
-	import { page } from "$app/stores";
+	import { page } from "$app/state";
 	import { onDestroy } from "svelte";
 	import { browser } from "$app/environment";
 
-	export let tool: MessageToolUpdate[];
-	export let loading: boolean = false;
+	interface Props {
+		tool: MessageToolUpdate[];
+		loading?: boolean;
+	}
+
+	let { tool, loading = false }: Props = $props();
 
 	const toolFnName = tool.find(isMessageToolCallUpdate)?.call.name;
-	$: toolError = tool.some(isMessageToolErrorUpdate);
-	$: toolDone = tool.some(isMessageToolResultUpdate);
+	let toolError = $derived(tool.some(isMessageToolErrorUpdate));
+	let toolDone = $derived(tool.some(isMessageToolResultUpdate));
 
-	// svelte-ignore reactive_declaration_non_reactive_property
-	$: eta = tool.find((el) => el.subtype === MessageToolUpdateType.ETA)?.eta;
+	let eta = $derived(tool.find((el) => el.subtype === MessageToolUpdateType.ETA)?.eta);
 
-	const availableTools: ToolFront[] = $page.data.tools;
+	const availableTools: ToolFront[] = page.data.tools;
 
-	let loadingBarEl: HTMLDivElement;
-	let animation: Animation | undefined = undefined;
+	let loadingBarEl: HTMLDivElement | undefined = $state();
+	let animation: Animation | undefined = $state(undefined);
 
-	let isShowingLoadingBar = false;
+	let isShowingLoadingBar = $state(false);
 
-	$: !toolError &&
-		!toolDone &&
-		loading &&
-		loadingBarEl &&
-		eta &&
-		(() => {
-			loadingBarEl.classList.remove("hidden");
-			isShowingLoadingBar = true;
-			animation = loadingBarEl.animate([{ width: "0%" }, { width: "calc(100%+1rem)" }], {
-				duration: eta * 1000,
-				fill: "forwards",
-			});
-		})();
+	$effect(() => {
+		!toolError &&
+			!toolDone &&
+			loading &&
+			loadingBarEl &&
+			eta &&
+			(() => {
+				loadingBarEl.classList.remove("hidden");
+				isShowingLoadingBar = true;
+				animation = loadingBarEl.animate([{ width: "0%" }, { width: "calc(100%+1rem)" }], {
+					duration: eta * 1000,
+					fill: "forwards",
+				});
+			})();
+	});
 
 	onDestroy(() => {
 		if (animation) {
@@ -50,28 +55,30 @@
 	});
 
 	// go to 100% quickly if loading is done
-	$: (!loading || toolDone || toolError) &&
-		browser &&
-		loadingBarEl &&
-		isShowingLoadingBar &&
-		(() => {
-			isShowingLoadingBar = false;
+	$effect(() => {
+		(!loading || toolDone || toolError) &&
+			browser &&
+			loadingBarEl &&
+			isShowingLoadingBar &&
+			(() => {
+				isShowingLoadingBar = false;
 
-			loadingBarEl.classList.remove("hidden");
+				loadingBarEl.classList.remove("hidden");
 
-			animation?.cancel();
-			animation = loadingBarEl.animate(
-				[{ width: loadingBarEl.style.width }, { width: "calc(100%+1rem)" }],
-				{
-					duration: 300,
-					fill: "forwards",
-				}
-			);
+				animation?.cancel();
+				animation = loadingBarEl.animate(
+					[{ width: loadingBarEl.style.width }, { width: "calc(100%+1rem)" }],
+					{
+						duration: 300,
+						fill: "forwards",
+					}
+				);
 
-			setTimeout(() => {
-				loadingBarEl.classList.add("hidden");
-			}, 300);
-		})();
+				setTimeout(() => {
+					loadingBarEl?.classList.add("hidden");
+				}, 300);
+			})();
+	});
 </script>
 
 {#if toolFnName && toolFnName !== "websearch"}

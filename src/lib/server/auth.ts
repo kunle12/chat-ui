@@ -6,7 +6,7 @@ import {
 	custom,
 } from "openid-client";
 import { addHours, addWeeks } from "date-fns";
-import { env } from "$env/dynamic/private";
+import { config } from "$lib/server/config";
 import { sha256 } from "$lib/utils/sha256";
 import { z } from "zod";
 import { dev } from "$app/environment";
@@ -14,6 +14,9 @@ import type { Cookies } from "@sveltejs/kit";
 import { collections } from "$lib/server/database";
 import JSON5 from "json5";
 import { logger } from "$lib/server/logger";
+import { ObjectId } from "mongodb";
+import type { Cookie } from "elysia";
+import { adminTokenManager } from "./adminToken";
 
 export interface OIDCSettings {
 	redirectURI: string;
@@ -32,34 +35,34 @@ const stringWithDefault = (value: string) =>
 
 export const OIDConfig = z
 	.object({
-		CLIENT_ID: stringWithDefault(env.OPENID_CLIENT_ID),
-		CLIENT_SECRET: stringWithDefault(env.OPENID_CLIENT_SECRET),
-		PROVIDER_URL: stringWithDefault(env.OPENID_PROVIDER_URL),
-		SCOPES: stringWithDefault(env.OPENID_SCOPES),
-		NAME_CLAIM: stringWithDefault(env.OPENID_NAME_CLAIM).refine(
+		CLIENT_ID: stringWithDefault(config.OPENID_CLIENT_ID),
+		CLIENT_SECRET: stringWithDefault(config.OPENID_CLIENT_SECRET),
+		PROVIDER_URL: stringWithDefault(config.OPENID_PROVIDER_URL),
+		SCOPES: stringWithDefault(config.OPENID_SCOPES),
+		NAME_CLAIM: stringWithDefault(config.OPENID_NAME_CLAIM).refine(
 			(el) => !["preferred_username", "email", "picture", "sub"].includes(el),
 			{ message: "nameClaim cannot be one of the restricted keys." }
 		),
-		TOLERANCE: stringWithDefault(env.OPENID_TOLERANCE),
-		RESOURCE: stringWithDefault(env.OPENID_RESOURCE),
+		TOLERANCE: stringWithDefault(config.OPENID_TOLERANCE),
+		RESOURCE: stringWithDefault(config.OPENID_RESOURCE),
 		ID_TOKEN_SIGNED_RESPONSE_ALG: z.string().optional(),
 	})
-	.parse(JSON5.parse(env.OPENID_CONFIG || "{}"));
+	.parse(JSON5.parse(config.OPENID_CONFIG || "{}"));
 
 export const requiresUser = !!OIDConfig.CLIENT_ID && !!OIDConfig.CLIENT_SECRET;
 
 const sameSite = z
 	.enum(["lax", "none", "strict"])
-	.default(dev || env.ALLOW_INSECURE_COOKIES === "true" ? "lax" : "none")
-	.parse(env.COOKIE_SAMESITE === "" ? undefined : env.COOKIE_SAMESITE);
+	.default(dev || config.ALLOW_INSECURE_COOKIES === "true" ? "lax" : "none")
+	.parse(config.COOKIE_SAMESITE === "" ? undefined : config.COOKIE_SAMESITE);
 
 const secure = z
 	.boolean()
-	.default(!(dev || env.ALLOW_INSECURE_COOKIES === "true"))
-	.parse(env.COOKIE_SECURE === "" ? undefined : env.COOKIE_SECURE === "true");
+	.default(!(dev || config.ALLOW_INSECURE_COOKIES === "true"))
+	.parse(config.COOKIE_SECURE === "" ? undefined : config.COOKIE_SECURE === "true");
 
 export function refreshSessionCookie(cookies: Cookies, sessionId: string) {
-	cookies.set(env.COOKIE_NAME, sessionId, {
+	cookies.set(config.COOKIE_NAME, sessionId, {
 		path: "/",
 		// So that it works inside the space's iframe
 		sameSite,
@@ -79,6 +82,10 @@ export async function findUser(sessionId: string) {
 	return await collections.users.findOne({ _id: session.userId });
 }
 export const authCondition = (locals: App.Locals) => {
+	if (!locals.user && !locals.sessionId) {
+		throw new Error("User or sessionId is required");
+	}
+
 	return locals.user
 		? { userId: locals.user._id }
 		: { sessionId: locals.sessionId, userId: { $exists: false } };
@@ -165,6 +172,7 @@ export async function validateAndParseCsrfToken(
 				signature: z.string().length(64),
 			})
 			.parse(JSON.parse(token));
+
 		const reconstructSign = await sha256(JSON.stringify(data) + "##" + sessionId);
 
 		if (data.expiration > Date.now() && signature === reconstructSign) {
@@ -174,4 +182,132 @@ export async function validateAndParseCsrfToken(
 		logger.error(e);
 	}
 	return null;
+}
+
+type CookieRecord =
+	| { type: "elysia"; value: Record<string, Cookie<string | undefined>> }
+	| { type: "svelte"; value: Cookies };
+type HeaderRecord =
+	| { type: "elysia"; value: Record<string, string | undefined> }
+	| { type: "svelte"; value: Headers };
+
+export async function authenticateRequest(
+	headers: HeaderRecord,
+	cookie: CookieRecord,
+	isApi?: boolean
+): Promise<App.Locals & { secretSessionId: string }> {
+	// once the entire API has been moved to elysia
+	// we can move this function to authPlugin.ts
+	// and get rid of the isApi && type: "svelte" options
+	const token =
+		cookie.type === "elysia"
+			? cookie.value[config.COOKIE_NAME].value
+			: cookie.value.get(config.COOKIE_NAME);
+
+	let email = null;
+	if (config.TRUSTED_EMAIL_HEADER) {
+		if (headers.type === "elysia") {
+			email = headers.value[config.TRUSTED_EMAIL_HEADER];
+		} else {
+			email = headers.value.get(config.TRUSTED_EMAIL_HEADER);
+		}
+	}
+
+	let secretSessionId: string | null = null;
+	let sessionId: string | null = null;
+
+	if (email) {
+		secretSessionId = sessionId = await sha256(email);
+		return {
+			user: {
+				_id: new ObjectId(sessionId.slice(0, 24)),
+				name: email,
+				email,
+				createdAt: new Date(),
+				updatedAt: new Date(),
+				hfUserId: email,
+				avatarUrl: "",
+				logoutDisabled: true,
+			},
+			sessionId,
+			secretSessionId,
+			isAdmin: adminTokenManager.isAdmin(sessionId),
+		};
+	}
+
+	if (token) {
+		secretSessionId = token;
+		sessionId = await sha256(token);
+		const user = await findUser(sessionId);
+		return {
+			user: user ?? undefined,
+			sessionId,
+			secretSessionId,
+			isAdmin: user?.isAdmin || adminTokenManager.isAdmin(sessionId),
+		};
+	}
+
+	if (isApi) {
+		const authorization =
+			headers.type === "elysia"
+				? headers.value["Authorization"]
+				: headers.value.get("Authorization");
+		if (authorization?.startsWith("Bearer ")) {
+			const token = authorization.slice(7);
+			const hash = await sha256(token);
+			sessionId = secretSessionId = hash;
+
+			const cacheHit = await collections.tokenCaches.findOne({ tokenHash: hash });
+			if (cacheHit) {
+				const user = await collections.users.findOne({ hfUserId: cacheHit.userId });
+				if (!user) {
+					throw new Error("User not found");
+				}
+				return {
+					user,
+					sessionId,
+					secretSessionId,
+					isAdmin: user.isAdmin || adminTokenManager.isAdmin(sessionId),
+				};
+			}
+
+			const response = await fetch("https://huggingface.co/api/whoami-v2", {
+				headers: { Authorization: `Bearer ${token}` },
+			});
+
+			if (!response.ok) {
+				throw new Error("Unauthorized");
+			}
+
+			const data = await response.json();
+			const user = await collections.users.findOne({ hfUserId: data.id });
+			if (!user) {
+				throw new Error("User not found");
+			}
+
+			await collections.tokenCaches.insertOne({
+				tokenHash: hash,
+				userId: data.id,
+				createdAt: new Date(),
+				updatedAt: new Date(),
+			});
+
+			return {
+				user,
+				sessionId,
+				secretSessionId,
+				isAdmin: user.isAdmin || adminTokenManager.isAdmin(sessionId),
+			};
+		}
+	}
+
+	// Generate new session if none exists
+	secretSessionId = crypto.randomUUID();
+	sessionId = await sha256(secretSessionId);
+
+	if (await collections.sessions.findOne({ sessionId })) {
+		throw new Error("Session ID collision");
+	}
+
+	return { user: undefined, sessionId, secretSessionId, isAdmin: false };
 }

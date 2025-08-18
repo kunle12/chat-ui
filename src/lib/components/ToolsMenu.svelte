@@ -1,28 +1,36 @@
 <script lang="ts">
 	import { base } from "$app/paths";
-	import { page } from "$app/stores";
+	import { page } from "$app/state";
 	import { clickOutside } from "$lib/actions/clickOutside";
 	import { useSettingsStore } from "$lib/stores/settings";
 	import type { ToolFront } from "$lib/types/Tool";
-	import { isHuggingChat } from "$lib/utils/isHuggingChat";
 	import IconTool from "./icons/IconTool.svelte";
 	import CarbonInformation from "~icons/carbon/information";
 	import CarbonGlobe from "~icons/carbon/earth-filled";
+	import { usePublicConfig } from "$lib/utils/PublicConfig.svelte";
 
-	export let loading = false;
+	const publicConfig = usePublicConfig();
+
+	interface Props {
+		loading?: boolean;
+	}
+
+	let { loading = false }: Props = $props();
 	const settings = useSettingsStore();
 
-	let detailsEl: HTMLDetailsElement;
+	let detailsEl: HTMLDetailsElement | undefined = $state();
 
 	// active tools are all the checked tools, either from settings or on by default
-	$: activeToolCount = $page.data.tools.filter(
-		(tool: ToolFront) =>
-			// community tools are always on by default
-			tool.type === "community" || $settings?.tools?.includes(tool._id)
-	).length;
+	let activeToolCount = $derived(
+		page.data.tools.filter(
+			(tool: ToolFront) =>
+				// community tools are always on by default
+				tool.type === "community" || $settings?.tools?.includes(tool._id)
+		).length
+	);
 
 	async function setAllTools(value: boolean) {
-		const configToolsIds = $page.data.tools
+		const configToolsIds = page.data.tools
 			.filter((t: ToolFront) => t.type === "config")
 			.map((t: ToolFront) => t._id);
 
@@ -37,16 +45,16 @@
 		}
 	}
 
-	$: allToolsEnabled = activeToolCount === $page.data.tools.length;
+	let allToolsEnabled = $derived(activeToolCount === page.data.tools.length);
 
-	$: tools = $page.data.tools;
+	let tools = $derived(page.data.tools);
 </script>
 
 <details
 	class="group relative bottom-0 h-full min-h-8"
 	bind:this={detailsEl}
 	use:clickOutside={() => {
-		if (detailsEl.hasAttribute("open")) {
+		if (detailsEl?.hasAttribute("open")) {
 			detailsEl.removeAttribute("open");
 		}
 	}}
@@ -65,7 +73,7 @@
 		<div class="grid grid-cols-2 gap-x-6 gap-y-1 p-3">
 			<div class="col-span-2 flex items-center gap-1.5 text-sm text-gray-500">
 				Available tools
-				{#if isHuggingChat}
+				{#if publicConfig.isHuggingChat}
 					<a
 						href="https://huggingface.co/spaces/huggingchat/chat-ui/discussions/470"
 						target="_blank"
@@ -75,7 +83,10 @@
 				{/if}
 				<button
 					class="ml-auto text-xs underline"
-					on:click|stopPropagation={() => setAllTools(!allToolsEnabled)}
+					onclick={(e) => {
+						e.stopPropagation();
+						setAllTools(!allToolsEnabled);
+					}}
 				>
 					{#if allToolsEnabled}
 						Disable all
@@ -84,7 +95,7 @@
 					{/if}
 				</button>
 			</div>
-			{#if $page.data.enableCommunityTools}
+			{#if page.data.enableCommunityTools}
 				<a
 					href="{base}/tools"
 					class="col-span-2 my-1 h-fit w-fit items-center justify-center rounded-full bg-purple-500/20 px-2.5 py-1.5 text-sm hover:bg-purple-500/30"
@@ -92,7 +103,7 @@
 					<span class="mr-1 rounded-full bg-purple-700 px-1.5 py-1 text-xs font-bold uppercase">
 						new
 					</span>
-					Browse community tools ({$page.data.communityToolCount ?? 0})
+					Browse community tools ({page.data.communityToolCount ?? 0})
 				</a>
 			{/if}
 			{#each tools as tool}
@@ -104,7 +115,9 @@
 							id={tool._id}
 							checked={true}
 							class="rounded-xs font-semibold accent-purple-500 hover:accent-purple-600"
-							on:click|stopPropagation|preventDefault={async () => {
+							onclick={async (e) => {
+								e.preventDefault();
+								e.stopPropagation();
 								await settings.instantSet({
 									tools: $settings?.tools?.filter((t) => t !== tool._id) ?? [],
 								});
@@ -116,7 +129,9 @@
 							id={tool._id}
 							checked={isChecked}
 							disabled={loading}
-							on:click|stopPropagation={async () => {
+							onclick={async (e) => {
+								e.preventDefault();
+								e.stopPropagation();
 								if (isChecked) {
 									await settings.instantSet({
 										tools: ($settings?.tools ?? []).filter((t) => t !== tool._id),
