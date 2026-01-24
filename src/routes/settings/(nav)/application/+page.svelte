@@ -99,16 +99,6 @@
 		Application Settings
 	</h2>
 
-	{#if OPENAI_BASE_URL !== null}
-		<div
-			class="mt-1 rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-[12px] text-gray-700 dark:border-gray-700 dark:bg-gray-700/80 dark:text-gray-300"
-		>
-			<span class="font-medium">API Base URL:</span>
-			<code class="ml-1 break-all font-mono text-[12px] text-gray-800 dark:text-gray-100"
-				>{OPENAI_BASE_URL}</code
-			>
-		</div>
-	{/if}
 	{#if !!publicConfig.PUBLIC_COMMIT_SHA}
 		<div
 			class="flex flex-col items-start justify-between text-xl font-semibold text-gray-800 dark:text-gray-200"

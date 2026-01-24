@@ -14,39 +14,11 @@
 
 <Modal closeOnBackdrop={false} onclose={close} width="!max-w-[420px] !m-4">
 	<div
-		class="flex w-full flex-col gap-8 bg-white bg-gradient-to-b to-transparent px-6 pb-7 dark:bg-black dark:from-white/10 dark:to-white/5"
+		class="flex w-full flex-col gap-8 bg-white bg-gradient-to-b to-transparent px-6 pb-7 mt-5 dark:bg-black dark:from-white/10 dark:to-white/5"
 	>
-		<div
-			class="relative -mx-6 grid h-48 select-none place-items-center bg-gradient-to-t from-black/5 dark:from-white/10"
-		>
-			<img
-				class="size-full bg-black object-cover"
-				src="{publicConfig.assetPath}/omni-welcome.gif"
-				alt="Omni AI model router animation"
-			/>
-			<!-- <h2
-				class="flex translate-y-1 items-center text-3xl font-semibold text-gray-900 dark:text-gray-100"
-			>
-				<Logo classNames="mr-2 size-12 dark:invert" />
-				{publicConfig.PUBLIC_APP_NAME}
-			</h2> -->
-			<div
-				class="absolute bottom-3 right-3 rounded-lg border border-blue-500/20 bg-blue-500/20 px-2 py-0.5 text-sm font-semibold text-blue-500"
-			>
-				Now with MCP!
-			</div>
-		</div>
-
 		<div class="text-gray-700 dark:text-gray-200">
 			<p class="text-[15px] leading-relaxed">
-				Welcome to {publicConfig.PUBLIC_APP_NAME}, the chat app powered by open source AI models.
-			</p>
-			<p class="mt-3 text-[15px] leading-relaxed">
-				<IconOmni classNames="-translate-y-px" /> Omni automatically picks the best AI model to give
-				you optimal answers depending on your requests.
-			</p>
-			<p class="mt-3 text-[15px] leading-relaxed">
-				You can also choose from any available open source models to chat with directly.
+				Welcome to {publicConfig.PUBLIC_APP_NAME}, this is a private AI assistant for kunle12.org.
 			</p>
 		</div>
 
