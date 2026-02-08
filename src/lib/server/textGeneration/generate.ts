@@ -22,6 +22,7 @@ export async function* generate(
 		assistant,
 		promptedAt,
 		forceMultimodal,
+		provider,
 		locals,
 		abortController,
 	}: GenerateContext,
@@ -60,6 +61,7 @@ export async function* generate(
 		conversationId: conv._id,
 		locals,
 		abortSignal: abortController.signal,
+		provider,
 	});
 
 	for await (const output of stream) {
@@ -84,6 +86,16 @@ export async function* generate(
 		}
 		// text generation completed
 		if (output.generated_text) {
+			// If an abort happened just before final output, stop here and let
+			// the caller emit an interrupted final answer with partial text.
+			const abortTime = AbortedGenerations.getInstance().getAbortTime(conv._id.toString());
+			if (abortController.signal.aborted || (abortTime && abortTime > promptedAt)) {
+				if (!abortController.signal.aborted) {
+					abortController.abort();
+				}
+				break;
+			}
+
 			let interrupted =
 				!output.token.special && !model.parameters.stop?.includes(output.token.text);
 
