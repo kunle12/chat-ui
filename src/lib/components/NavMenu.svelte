@@ -173,10 +173,15 @@
 >
 	{#if user?.username || user?.email}
 		<div
-			class="group flex items-center gap-1.5 rounded-lg pl-2.5 pr-2 hover:bg-gray-100 first:hover:bg-transparent dark:hover:bg-gray-700 first:dark:hover:bg-transparent"
+			class="group flex h-9 items-center gap-1.5 rounded-lg pl-2.5 pr-2 hover:bg-gray-100 first:hover:bg-transparent dark:hover:bg-gray-700 first:dark:hover:bg-transparent"
 		>
+			<img
+				src="https://huggingface.co/api/users/{user.username}/avatar?redirect=true"
+				class="size-3.5 rounded-full border bg-gray-500 dark:border-white/40"
+				alt=""
+			/>
 			<span
-				class="flex h-9 flex-none shrink items-center gap-1.5 truncate pr-2 text-gray-500 dark:text-gray-400"
+				class="flex flex-none shrink items-center gap-1.5 truncate pr-2 text-gray-500 dark:text-gray-400"
 				>{user?.username || user?.email}</span
 			>
 
@@ -198,14 +203,6 @@
 					PRO
 				</span>
 			{/if}
-
-			<img
-				src="https://huggingface.co/api/users/{user.username}/avatar?redirect=true"
-				class="{!(publicConfig.isHuggingChat && $isPro !== null)
-					? 'ml-auto'
-					: ''} size-4 rounded-full border bg-gray-500 dark:border-white/40"
-				alt=""
-			/>
 		</div>
 	{/if}
 	<a

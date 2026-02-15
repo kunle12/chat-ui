@@ -66,7 +66,7 @@ describe("GET /api/v2/user/settings", () => {
 		expect(data).toMatchObject({
 			welcomeModalSeen: false,
 			welcomeModalSeenAt: null,
-			disableStream: false,
+			streamingMode: "smooth",
 			directPaste: false,
 			shareConversationsWithModelAuthors: true,
 			customPrompts: {},
@@ -76,14 +76,14 @@ describe("GET /api/v2/user/settings", () => {
 		});
 	});
 
-	it("returns stored settings", async () => {
+	it("returns stored settings with canonical streaming mode", async () => {
 		const { user, locals } = await createTestUser();
 
 		await collections.settings.insertOne({
 			userId: user._id,
 			shareConversationsWithModelAuthors: false,
 			activeModel: "custom-model",
-			disableStream: true,
+			streamingMode: "raw",
 			directPaste: true,
 			customPrompts: { "my-model": "Be helpful" },
 			multimodalOverrides: {},
@@ -101,9 +101,39 @@ describe("GET /api/v2/user/settings", () => {
 		expect(data).toMatchObject({
 			welcomeModalSeen: true,
 			shareConversationsWithModelAuthors: false,
-			disableStream: true,
+			streamingMode: "raw",
 			directPaste: true,
 			customPrompts: { "my-model": "Be helpful" },
+		});
+	});
+
+	it("maps legacy stored streamingMode=final to smooth", async () => {
+		const { user, locals } = await createTestUser();
+
+		const legacySettingsWithFinal = {
+			userId: user._id,
+			shareConversationsWithModelAuthors: true,
+			activeModel: "custom-model",
+			streamingMode: "final",
+			directPaste: false,
+			customPrompts: {},
+			multimodalOverrides: {},
+			toolsOverrides: {},
+			hidePromptExamples: {},
+			providerOverrides: {},
+			createdAt: new Date(),
+			updatedAt: new Date(),
+		};
+
+		await collections.settings.insertOne(
+			legacySettingsWithFinal as unknown as Parameters<typeof collections.settings.insertOne>[0]
+		);
+
+		const res = await settingsGET(mockRequestEvent(locals));
+		const data = await parseResponse<Record<string, unknown>>(res);
+
+		expect(data).toMatchObject({
+			streamingMode: "smooth",
 		});
 	});
 });
@@ -123,7 +153,7 @@ describe("POST /api/v2/user/settings", () => {
 			multimodalOverrides: {},
 			toolsOverrides: {},
 			providerOverrides: {},
-			disableStream: true,
+			streamingMode: "raw",
 			directPaste: false,
 			hidePromptExamples: {},
 		};
@@ -143,7 +173,7 @@ describe("POST /api/v2/user/settings", () => {
 		const stored = await collections.settings.findOne({ userId: user._id });
 		expect(stored).not.toBeNull();
 		expect(stored?.shareConversationsWithModelAuthors).toBe(false);
-		expect(stored?.disableStream).toBe(true);
+		expect(stored?.streamingMode).toBe("raw");
 		expect(stored?.createdAt).toBeInstanceOf(Date);
 		expect(stored?.updatedAt).toBeInstanceOf(Date);
 	});
@@ -159,7 +189,7 @@ describe("POST /api/v2/user/settings", () => {
 			multimodalOverrides: {},
 			toolsOverrides: {},
 			providerOverrides: {},
-			disableStream: false,
+			streamingMode: "smooth",
 			directPaste: false,
 			hidePromptExamples: {},
 		};
@@ -201,7 +231,7 @@ describe("POST /api/v2/user/settings", () => {
 		expect(stored).not.toBeNull();
 		// Zod defaults should be applied
 		expect(stored?.shareConversationsWithModelAuthors).toBe(true);
-		expect(stored?.disableStream).toBe(false);
+		expect(stored?.streamingMode).toBe("smooth");
 		expect(stored?.directPaste).toBe(false);
 		expect(stored?.customPrompts).toEqual({});
 	});

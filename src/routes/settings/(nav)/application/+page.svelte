@@ -4,6 +4,7 @@
 	import CarbonLogoGithub from "~icons/carbon/logo-github";
 
 	import { useSettingsStore } from "$lib/stores/settings";
+	import type { StreamingMode } from "$lib/types/Settings";
 	import Switch from "$lib/components/Switch.svelte";
 
 	import { goto } from "$app/navigation";
@@ -26,11 +27,11 @@
 	function setShareWithAuthors(v: boolean) {
 		settings.update((s) => ({ ...s, shareConversationsWithModelAuthors: v }));
 	}
-	function getDisableStream() {
-		return $settings.disableStream;
+	function getStreamingMode() {
+		return $settings.streamingMode;
 	}
-	function setDisableStream(v: boolean) {
-		settings.update((s) => ({ ...s, disableStream: v }));
+	function setStreamingMode(v: StreamingMode) {
+		settings.update((s) => ({ ...s, streamingMode: v }));
 	}
 	function getDirectPaste() {
 		return $settings.directPaste;
@@ -175,13 +176,20 @@
 				<div class="flex items-start justify-between py-3">
 					<div>
 						<div class="text-[13px] font-medium text-gray-800 dark:text-gray-200">
-							Disable streaming tokens
+							Streaming mode
 						</div>
 						<p class="text-[12px] text-gray-500 dark:text-gray-400">
-							Show responses only when complete.
+							Choose how assistant text appears while generating.
 						</p>
 					</div>
-					<Switch name="disableStream" bind:checked={getDisableStream, setDisableStream} />
+					<select
+						class="rounded-md border border-gray-300 bg-white px-1 py-1 text-xs text-gray-800 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-200"
+						value={getStreamingMode()}
+						onchange={(e) => setStreamingMode(e.currentTarget.value as StreamingMode)}
+					>
+						<option value="smooth">Smooth stream</option>
+						<option value="raw">Raw stream</option>
+					</select>
 				</div>
 
 				<div class="flex items-start justify-between py-3">
@@ -204,46 +212,19 @@
 							Choose light, dark, or follow system.
 						</p>
 					</div>
-					<div
-						class="flex overflow-hidden rounded-md border text-center dark:divide-gray-600 dark:border-gray-600 max-sm:flex-col max-sm:divide-y sm:items-center sm:divide-x"
+					<select
+						class="rounded-md border border-gray-300 bg-white px-1 py-1 text-xs text-gray-800 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-200"
+						value={themePref}
+						onchange={(e) => {
+							const v = e.currentTarget.value as ThemePreference;
+							setTheme(v);
+							themePref = v;
+						}}
 					>
-						<button
-							class={"inline-flex items-center justify-center px-2.5 py-1 text-center text-xs " +
-								(themePref === "system"
-									? "bg-black text-white dark:border-white/10 dark:bg-white/80 dark:text-gray-900"
-									: "hover:bg-gray-50 dark:text-gray-300 dark:hover:bg-gray-700/60")}
-							onclick={() => {
-								setTheme("system");
-								themePref = "system";
-							}}
-						>
-							system
-						</button>
-						<button
-							class={"inline-flex items-center justify-center px-2.5 py-1 text-center text-xs " +
-								(themePref === "light"
-									? "bg-black text-white dark:border-white/10 dark:bg-white/80 dark:text-gray-900"
-									: "hover:bg-gray-50 dark:text-gray-300 dark:hover:bg-gray-700/60")}
-							onclick={() => {
-								setTheme("light");
-								themePref = "light";
-							}}
-						>
-							light
-						</button>
-						<button
-							class={"inline-flex items-center justify-center px-2.5 py-1 text-center text-xs " +
-								(themePref === "dark"
-									? "bg-black text-white dark:border-white/10 dark:bg-white/80 dark:text-gray-900"
-									: "hover:bg-gray-50 dark:text-gray-300 dark:hover:bg-gray-700/60")}
-							onclick={() => {
-								setTheme("dark");
-								themePref = "dark";
-							}}
-						>
-							dark
-						</button>
-					</div>
+						<option value="system">System</option>
+						<option value="light">Light</option>
+						<option value="dark">Dark</option>
+					</select>
 				</div>
 			</div>
 		</div>

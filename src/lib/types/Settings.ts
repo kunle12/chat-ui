@@ -2,6 +2,8 @@ import { defaultModel } from "$lib/server/models";
 import type { Timestamps } from "./Timestamps";
 import type { User } from "./User";
 
+export type StreamingMode = "raw" | "smooth";
+
 export interface Settings extends Timestamps {
 	userId?: User["_id"];
 	sessionId?: string;
@@ -40,7 +42,12 @@ export interface Settings extends Timestamps {
 	 */
 	providerOverrides?: Record<string, string>;
 
-	disableStream: boolean;
+	/**
+	 * Preferred assistant output behavior in the chat UI.
+	 * - "raw": show provider-native stream chunks
+	 * - "smooth": show smoothed stream chunks
+	 */
+	streamingMode: StreamingMode;
 	directPaste: boolean;
 
 	/**
@@ -60,6 +67,6 @@ export const DEFAULT_SETTINGS = {
 	toolsOverrides: {},
 	hidePromptExamples: {},
 	providerOverrides: {},
-	disableStream: false,
+	streamingMode: "smooth",
 	directPaste: false,
 } satisfies SettingsEditable;
