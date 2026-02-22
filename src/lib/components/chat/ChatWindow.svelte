@@ -36,6 +36,7 @@
 	import type { RouterFollowUp, RouterExample } from "$lib/constants/routerExamples";
 	import { allBaseServersEnabled, mcpServersLoaded } from "$lib/stores/mcpServers";
 	import { shareModal } from "$lib/stores/shareModal";
+	import { pendingChatInput } from "$lib/stores/pendingChatInput";
 	import LucideHammer from "~icons/lucide/hammer";
 
 	import { fly } from "svelte/transition";
@@ -338,13 +339,13 @@
 			activeRouterExamplePrompt &&
 			routerFollowUps.length > 0 &&
 			routerUserMessages.length === 1 &&
-			currentModel.isRouter &&
+			(currentModel.isRouter || (modelSupportsTools && $allBaseServersEnabled)) &&
 			!hideRouterExamples &&
 			!loading
 	);
 
 	$effect(() => {
-		if (!currentModel.isRouter || !messages.length) {
+		if (!(currentModel.isRouter || (modelSupportsTools && $allBaseServersEnabled)) || !messages.length) {
 			activeRouterExamplePrompt = null;
 			return;
 		}
@@ -357,6 +358,13 @@
 
 		const match = activeExamples.find((ex) => ex.prompt.trim() === firstUserMessage.content.trim());
 		activeRouterExamplePrompt = match ? match.prompt : null;
+	});
+
+	$effect(() => {
+		if ($pendingChatInput) {
+			draft = $pendingChatInput;
+			pendingChatInput.set(undefined);
+		}
 	});
 
 	function triggerPrompt(prompt: string) {
@@ -542,7 +550,7 @@
 			dark:from-gray-900 dark:via-gray-900/100
 			dark:to-gray-900/0 max-sm:py-0 sm:px-5 md:pb-4 xl:max-w-4xl [&>*]:pointer-events-auto"
 	>
-		{#if !draft.length && !messages.length && !sources.length && !loading && currentModel.isRouter && activeExamples.length && !hideRouterExamples && !lastIsError && $mcpServersLoaded}
+		{#if !draft.length && !messages.length && !sources.length && !loading && (currentModel.isRouter || (modelSupportsTools && $allBaseServersEnabled)) && activeExamples.length && !hideRouterExamples && !lastIsError && $mcpServersLoaded}
 			<div
 				class="no-scrollbar mb-3 flex w-full select-none justify-start gap-2 overflow-x-auto whitespace-nowrap text-gray-400 dark:text-gray-500"
 			>
