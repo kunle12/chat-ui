@@ -1,0 +1,16 @@
+[Unit]
+Description=Chat UI - SvelteKit Application
+After=network.target
+
+[Service]
+Type=simple
+User=www-data
+Group=www-data
+WorkingDirectory=/var/www/chat-ui
+ExecStart=/usr/bin/node --env-file=/var/www/chat-ui/.env --env-file=/var/www/chat-ui/.env.local /var/www/chat-ui/build/index.js -- --host 0.0.0.0 --port 3000
+Restart=always
+RestartSec=10
+Environment=NODE_ENV=production
+
+[Install]
+WantedBy=multi-user.target
