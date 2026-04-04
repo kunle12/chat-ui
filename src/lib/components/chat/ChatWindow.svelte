@@ -163,17 +163,6 @@
 	};
 
 	let lastMessage = $derived(browser && (messages.at(-1) as Message));
-	// Scroll signal includes tool updates and thinking blocks to trigger scroll on all content changes
-	let scrollSignal = $derived.by(() => {
-		const last = messages.at(-1) as Message | undefined;
-		if (!last) return `${messages.length}:0`;
-
-		// Count tool updates to trigger scroll when new tools are called or complete
-		const toolUpdateCount = last.updates?.length ?? 0;
-
-		// Include content length, tool count, and message count in signal
-		return `${last.id}:${last.content.length}:${messages.length}:${toolUpdateCount}`;
-	});
 	let streamingAssistantMessage = $derived(
 		(() => {
 			for (let i = messages.length - 1; i >= 0; i -= 1) {
@@ -266,11 +255,22 @@
 
 	let chatContainer: HTMLElement | undefined = $state();
 
-	// Force scroll to bottom when user sends a new message
-	// Pattern: user message + empty assistant message are added together
-	let prevMessageCount = $state(messages.length);
+	// Force scroll to bottom when user sends a new message or switches conversation
+	let prevMessageCount = $state(0);
+	let prevFirstMessageId = $state(messages.at(0)?.id);
 	let forceReattach = $state(0);
 	$effect(() => {
+		const firstMessageId = messages.at(0)?.id;
+
+		// Conversation switch: first message ID changed
+		if (firstMessageId !== prevFirstMessageId) {
+			prevFirstMessageId = firstMessageId;
+			forceReattach++;
+			prevMessageCount = messages.length;
+			return;
+		}
+
+		// New user message: user message + empty assistant message added together
 		if (messages.length > prevMessageCount) {
 			const last = messages.at(-1);
 			const secondLast = messages.at(-2);
@@ -288,7 +288,7 @@
 	});
 
 	// Combined scroll dependency for the action
-	let scrollDependency = $derived({ signal: scrollSignal, forceReattach });
+	let scrollDependency = $derived({ forceReattach });
 
 	const settings = useSettingsStore();
 	let hideRouterExamples = $derived($settings.hidePromptExamples?.[currentModel.id] ?? false);
