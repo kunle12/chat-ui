@@ -49,8 +49,6 @@
 
 	const client = useAPIClient();
 
-	let OPENAI_BASE_URL = $state<string | null>(null);
-
 	// Billing organization state
 	type BillingOrg = { sub: string; name: string; preferred_username: string };
 	let billingOrgs = $state<BillingOrg[]>([]);
@@ -65,14 +63,6 @@
 	}
 
 	onMount(async () => {
-		// Fetch debug config
-		try {
-			const cfg = await client.debug.config.get().then(handleResponse);
-			OPENAI_BASE_URL = (cfg as { OPENAI_BASE_URL?: string }).OPENAI_BASE_URL || null;
-		} catch (e) {
-			// ignore if debug endpoint is unavailable
-		}
-
 		// Fetch billing organizations (only for HuggingChat + logged in users)
 		if (publicConfig.isHuggingChat && page.data.user) {
 			billingOrgsLoading = true;
@@ -102,7 +92,6 @@
 	<h2 class="text-center text-lg font-semibold text-gray-800 md:text-left dark:text-gray-200">
 		Application Settings
 	</h2>
-
 
 	{#if !!publicConfig.PUBLIC_COMMIT_SHA}
 		<div
