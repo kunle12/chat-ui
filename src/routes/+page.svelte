@@ -8,8 +8,11 @@
 
 	import ChatWindow from "$lib/components/chat/ChatWindow.svelte";
 	import { ERROR_MESSAGES, error } from "$lib/stores/errors";
-	import { pendingMessage } from "$lib/stores/pendingMessage";
+	import { storePendingFiles } from "$lib/utils/pendingFiles";
+	import superjson from "superjson";
+	import { seedPendingConversation, type ConversationData } from "$lib/utils/pendingConversation";
 	import { useSettingsStore } from "$lib/stores/settings.js";
+	import { useConversationsStore } from "$lib/stores/conversations.svelte";
 	import { findCurrentModel } from "$lib/utils/models";
 	import { sanitizeUrlParam } from "$lib/utils/urlParams";
 	import { onMount, tick } from "svelte";
@@ -18,6 +21,8 @@
 	import { requireAuthUser } from "$lib/utils/auth";
 
 	let { data } = $props();
+
+	const convsStore = useConversationsStore();
 
 	let hasModels = $derived(Boolean(data.models?.length));
 	let files: File[] = $state([]);
@@ -48,7 +53,10 @@
 				},
 				body: JSON.stringify({
 					model,
-					preprompt: $settings.customPrompts[$settings.activeModel],
+					preprompt:
+						($settings.customPromptsEnabled?.[$settings.activeModel] ?? true)
+							? $settings.customPrompts[$settings.activeModel]
+							: "",
 				}),
 			});
 
@@ -68,16 +76,38 @@
 				return;
 			}
 
-			const { conversationId } = await res.json();
+			const { conversationId, conversation } = await res.json();
 
-			// Ugly hack to use a store as temp storage, feel free to improve ^^
-			pendingMessage.set({
-				content: message,
-				files,
+			// The create response embeds the conversation payload; hand it to the
+			// conversation page as a one-shot seed so its load skips the GET and
+			// the first generation request starts one round-trip sooner.
+			if (typeof conversation === "string") {
+				try {
+					seedPendingConversation(conversationId, superjson.parse<ConversationData>(conversation));
+				} catch {
+					// Malformed seed: the page load falls back to a normal fetch.
+				}
+			}
+
+			// Pass the first message text via SvelteKit history state (JSON-serializable).
+			// File objects are not serializable, so they are stored in a client-side Map
+			// keyed by a random nonce; the nonce travels with the history state and is
+			// consumed once by the conversation page.
+			const pendingFilesNonce = files.length > 0 ? storePendingFiles(files) : undefined;
+
+			// Optimistically prepend the new conversation to the sidebar immediately so
+			// it appears before the first message starts streaming. "New Chat" matches
+			// the server-side default title; the real title arrives via a Title stream
+			// update once the LLM generates one.
+			convsStore.prepend({
+				id: conversationId,
+				title: "New Chat",
+				model,
+				updatedAt: new Date(),
 			});
-
-			// invalidateAll to update list of conversations
-			await goto(`${base}/conversation/${conversationId}`, { invalidateAll: true });
+			await goto(`${base}/conversation/${conversationId}`, {
+				state: { pendingMessage: message, pendingFilesNonce },
+			});
 		} catch (err) {
 			error.set((err as Error).message || ERROR_MESSAGES.default);
 			console.error(err);

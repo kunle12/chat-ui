@@ -21,9 +21,9 @@
 
 <div class="my-auto grid items-center justify-center gap-8 text-center">
 	<div
-		class="flex -translate-y-16 select-none items-center rounded-xl text-3xl font-semibold md:-translate-y-12 md:text-5xl"
+		class="flex -translate-y-16 items-center rounded-xl text-[1.6rem] font-semibold select-none md:-translate-y-12 md:text-[2.55rem]"
 	>
-		<Logo classNames="size-12 md:size-20 dark:invert mr-0.5" />
+		<Logo classNames="size-[2.55rem] md:size-[4.25rem] dark:invert mr-0.5" />
 		{publicConfig.PUBLIC_APP_NAME}
 	</div>
 	<!-- <div class="lg:col-span-1">
@@ -60,13 +60,13 @@
 					<div class="flex items-center gap-1.5 font-semibold max-sm:text-smd">
 						{#if currentModel.logoUrl}
 							<img
-								class="aspect-square size-4 rounded border bg-white dark:border-gray-700"
+								class="aspect-square size-4 rounded-sm border bg-white dark:border-gray-700"
 								src={currentModel.logoUrl}
 								alt=""
 							/>
 						{:else}
 							<div
-								class="size-4 rounded border border-transparent bg-gray-300 dark:bg-gray-800"
+								class="size-4 rounded-sm border border-transparent bg-gray-300 dark:bg-gray-800"
 							></div>
 						{/if}
 						{currentModel.displayName}

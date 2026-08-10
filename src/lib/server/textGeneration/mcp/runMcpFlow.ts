@@ -2,7 +2,6 @@ import { config } from "$lib/server/config";
 import { MessageUpdateType, type MessageUpdate } from "$lib/types/MessageUpdate";
 import { getMcpServers } from "$lib/server/mcp/registry";
 import { isValidUrl } from "$lib/server/urlSafety";
-import { resetMcpToolsCache } from "$lib/server/mcp/tools";
 import { getOpenAiToolsForMcp } from "$lib/server/mcp/tools";
 import type {
 	ChatCompletionChunk,
@@ -15,7 +14,7 @@ import { buildToolPreprompt } from "../utils/toolPrompt";
 import type { EndpointMessage } from "../../endpoints/endpoints";
 import { resolveRouterTarget } from "./routerResolution";
 import { executeToolCalls, type NormalizedToolCall } from "./toolInvocation";
-import { drainPool } from "$lib/server/mcp/clientPool";
+import { hasTruncatedToolCall, parseToolArguments } from "./toolArgs";
 import type { TextGenerationContext } from "../types";
 import {
 	hasAuthHeader,
@@ -31,11 +30,24 @@ import { AbortedGenerations } from "$lib/server/abortedGenerations";
 
 export type RunMcpFlowContext = Pick<
 	TextGenerationContext,
-	"model" | "conv" | "assistant" | "forceMultimodal" | "forceTools" | "provider" | "locals"
+	| "model"
+	| "conv"
+	| "assistant"
+	| "forceMultimodal"
+	| "forceTools"
+	| "provider"
+	| "reasoningEffort"
+	| "locals"
 > & { messages: EndpointMessage[] };
 
-// Return type: "completed" = MCP ran successfully, "not_applicable" = MCP didn't run, "aborted" = user aborted
-export type McpFlowResult = "completed" | "not_applicable" | "aborted";
+// Only "not_applicable" means MCP never ran and the caller should generate normally.
+// Every other result has already emitted its own final answer.
+export type McpFlowResult = "completed" | "not_applicable" | "aborted" | "exhausted";
+
+const MAX_TOOL_ROUNDS = 10;
+
+// Each retry costs a tool round, so give up quickly and answer without the tool.
+const MAX_TRUNCATED_TOOL_CALL_RETRIES = 2;
 
 export async function* runMcpFlow({
 	model,
@@ -45,6 +57,7 @@ export async function* runMcpFlow({
 	forceMultimodal,
 	forceTools,
 	provider,
+	reasoningEffort,
 	locals,
 	preprompt,
 	abortSignal,
@@ -91,8 +104,6 @@ export async function* runMcpFlow({
 		)?.mcp;
 		const custom = Array.isArray(reqMcp?.selectedServers) ? reqMcp?.selectedServers : [];
 		if (custom.length > 0) {
-			// Invalidate cached tool list when the set of servers changes at request-time
-			resetMcpToolsCache();
 			// Deduplicate by server name (request takes precedence)
 			const byName = new Map<
 				string,
@@ -140,12 +151,12 @@ export async function* runMcpFlow({
 		return "not_applicable";
 	}
 
-	// Enforce server-side safety (public HTTPS only, no private ranges)
+	// Enforce server-side safety (public HTTPS only, no private ranges by default)
 	{
 		const before = servers.slice();
 		servers = servers.filter((s) => {
 			try {
-				return isValidUrl(s.url);
+				return isValidUrl(s.url, { allowInsecure: true });
 			} catch {
 				return false;
 			}
@@ -274,8 +285,6 @@ export async function* runMcpFlow({
 
 	const { runMcp, targetModel, candidateModelId, resolvedRoute } = await resolveRouterTarget({
 		model,
-		messages,
-		conversationId: conv._id.toString(),
 		hasImageInput,
 		locals,
 	});
@@ -287,6 +296,10 @@ export async function* runMcpFlow({
 		);
 		return "not_applicable";
 	}
+
+	// Declared outside the try so the catch can see it: whether the user has been shown
+	// anything for this turn, which decides whether a failure is recoverable.
+	let producedOutput = false;
 
 	try {
 		const { tools: oaTools, mapping } = await getOpenAiToolsForMcp(servers, {
@@ -346,7 +359,8 @@ export async function* runMcpFlow({
 			imageProcessor,
 			mmEnabled
 		);
-		const toolPreprompt = buildToolPreprompt(oaTools);
+		const userTimezone = (locals as unknown as { timezone?: string })?.timezone;
+		const toolPreprompt = buildToolPreprompt(oaTools, userTimezone);
 		const prepromptPieces: string[] = [];
 		if (toolPreprompt.trim().length > 0) {
 			prepromptPieces.push(toolPreprompt);
@@ -398,7 +412,9 @@ export async function* runMcpFlow({
 		const modelIdWithProvider =
 			provider && provider !== "auto" ? `${baseModelId}:${provider}` : baseModelId;
 
-		const completionBase: Omit<ChatCompletionCreateParamsStreaming, "messages"> = {
+		const completionBase: Omit<ChatCompletionCreateParamsStreaming, "messages"> & {
+			reasoning_effort?: "low" | "medium" | "high";
+		} = {
 			model: modelIdWithProvider,
 			stream: true,
 			temperature: typeof parameters?.temperature === "number" ? parameters.temperature : undefined,
@@ -415,6 +431,7 @@ export async function* runMcpFlow({
 			max_tokens: typeof maxTokens === "number" ? maxTokens : undefined,
 			tools: oaTools,
 			tool_choice: "auto",
+			...(reasoningEffort ? { reasoning_effort: reasoningEffort } : {}),
 		};
 
 		const toPrimitive = (value: unknown) => {
@@ -424,14 +441,7 @@ export async function* runMcpFlow({
 			return undefined;
 		};
 
-		const parseArgs = (raw: unknown): Record<string, unknown> => {
-			if (typeof raw !== "string" || raw.trim().length === 0) return {};
-			try {
-				return JSON.parse(raw);
-			} catch {
-				return {};
-			}
-		};
+		const parseArgs = parseToolArguments;
 
 		const processToolOutput = (
 			text: string
@@ -445,6 +455,7 @@ export async function* runMcpFlow({
 		// Track whether we're inside a <think> block when the upstream streams
 		// provider-specific reasoning tokens (e.g. `reasoning` or `reasoning_content`).
 		let thinkOpen = false;
+		let truncatedToolCallRetries = 0;
 
 		if (resolvedRoute && candidateModelId) {
 			yield {
@@ -458,7 +469,7 @@ export async function* runMcpFlow({
 			);
 		}
 
-		for (let loop = 0; loop < 10; loop += 1) {
+		for (let loop = 0; loop < MAX_TOOL_ROUNDS; loop += 1) {
 			// Check for abort at the start of each loop iteration
 			if (checkAborted()) {
 				logger.info({ loop }, "[mcp] aborting at start of loop iteration");
@@ -480,7 +491,9 @@ export async function* runMcpFlow({
 					headers: {
 						"ChatUI-Conversation-ID": conv._id.toString(),
 						"X-use-cache": "false",
-						...(locals?.token ? { Authorization: `Bearer ${locals.token}` } : {}),
+						...(config.USE_USER_TOKEN === "true" && locals?.token
+							? { Authorization: `Bearer ${locals.token}` }
+							: {}),
 					},
 				}
 			);
@@ -500,8 +513,11 @@ export async function* runMcpFlow({
 			let firstToolDeltaLogged = false;
 			let sawToolCall = false;
 			let tokenCount = 0;
+			let finishReason: string | null | undefined;
 			for await (const chunk of completionStream) {
 				const choice = chunk.choices?.[0];
+				// Before the delta guard: the terminal chunk can carry only a finish_reason.
+				if (choice?.finish_reason) finishReason = choice.finish_reason;
 				const delta = choice?.delta;
 				if (!delta) continue;
 
@@ -589,6 +605,7 @@ export async function* runMcpFlow({
 					lastAssistantContent += combined;
 					if (!sawToolCall) {
 						streamedContent = true;
+						producedOutput = true;
 						yield { type: MessageUpdateType.Stream, token: combined };
 						tokenCount += combined.length;
 					}
@@ -623,7 +640,40 @@ export async function* runMcpFlow({
 				thinkOpen = false;
 			}
 
-			if (Object.keys(toolCallState).length > 0) {
+			let discardedTruncatedToolCalls = false;
+			if (hasTruncatedToolCall(finishReason, Object.values(toolCallState))) {
+				if (truncatedToolCallRetries < MAX_TRUNCATED_TOOL_CALL_RETRIES) {
+					truncatedToolCallRetries += 1;
+					logger.warn(
+						{ loop, attempt: truncatedToolCallRetries },
+						"[mcp] tool call truncated by the output limit; retrying"
+					);
+					const visibleContent = lastAssistantContent
+						.replace(/<think>[\s\S]*?(?:<\/think>|$)/g, "")
+						.trim();
+					messagesOpenAI = [
+						...messagesOpenAI,
+						// Not optional: a tool-only response leaves no visible content, and
+						// without this turn the nudge below is a second consecutive user
+						// message, which providers enforcing alternating roles reject —
+						// failing the very retry meant to recover the call.
+						{
+							role: "assistant" as const,
+							content: visibleContent || "(Tool call cut off by the output limit.)",
+						},
+						{
+							role: "user" as const,
+							content:
+								"[SYSTEM: Your previous response hit the output limit before the tool call was complete, so it was discarded. Retry with a smaller tool call — split large payloads across several calls and keep any inline file content short.]",
+						},
+					];
+					continue;
+				}
+				discardedTruncatedToolCalls = true;
+				logger.warn({ loop }, "[mcp] tool call truncated repeatedly; answering without running it");
+			}
+
+			if (!discardedTruncatedToolCalls && Object.keys(toolCallState).length > 0) {
 				// If any streamed call is missing id, perform a quick non-stream retry to recover full tool_calls with ids
 				const missingId = Object.values(toolCallState).some((c) => c?.name && !c?.id);
 				let calls: NormalizedToolCall[];
@@ -639,7 +689,9 @@ export async function* runMcpFlow({
 							headers: {
 								"ChatUI-Conversation-ID": conv._id.toString(),
 								"X-use-cache": "false",
-								...(locals?.token ? { Authorization: `Bearer ${locals.token}` } : {}),
+								...(config.USE_USER_TOKEN === "true" && locals?.token
+									? { Authorization: `Bearer ${locals.token}` }
+									: {}),
 							},
 						}
 					);
@@ -694,6 +746,7 @@ export async function* runMcpFlow({
 				let toolRunCount = 0;
 				for await (const event of exec) {
 					if (event.type === "update") {
+						producedOutput = true;
 						yield event.update;
 					} else {
 						messagesOpenAI = [
@@ -731,6 +784,12 @@ export async function* runMcpFlow({
 				lastAssistantContent += "</think>";
 				thinkOpen = false;
 			}
+			// Without this the turn finalizes empty and the route reports a bare
+			// "No output was generated" instead of what actually happened.
+			if (discardedTruncatedToolCalls && lastAssistantContent.trim().length === 0) {
+				lastAssistantContent =
+					"I couldn't complete that tool call — the request kept exceeding the output limit. Try breaking it into smaller steps.";
+			}
 			if (!streamedContent && lastAssistantContent.trim().length > 0) {
 				yield { type: MessageUpdateType.Stream, token: lastAssistantContent };
 			}
@@ -745,7 +804,18 @@ export async function* runMcpFlow({
 			);
 			return "completed";
 		}
-		logger.warn({}, "[mcp] exceeded tool-followup loops; falling back");
+		// Not "not_applicable": that re-runs the turn with no tools and discards every
+		// tool result this turn produced.
+		logger.warn({ maxRounds: MAX_TOOL_ROUNDS }, "[mcp] tool-round budget exhausted");
+		const exhaustedText =
+			lastAssistantContent.trim().length > 0
+				? lastAssistantContent
+				: "I stopped after too many tool steps without reaching an answer. Try narrowing the request or breaking it into smaller ones.";
+		if (!streamedContent) {
+			yield { type: MessageUpdateType.Stream, token: exhaustedText };
+		}
+		yield { type: MessageUpdateType.FinalAnswer, text: exhaustedText, interrupted: false };
+		return "exhausted";
 	} catch (err) {
 		const msg = String(err ?? "");
 		const isAbort =
@@ -758,11 +828,16 @@ export async function* runMcpFlow({
 			logger.debug({}, "[mcp] aborted by user");
 			return "aborted";
 		}
-		logger.warn({ err: msg }, "[mcp] flow failed, falling back to default endpoint");
-	} finally {
-		// ensure MCP clients are closed after the turn
-		await drainPool();
+		// Swallowing this into "not_applicable" would tell the caller MCP never ran, and
+		// it would answer the question again with no tools — discarding the tool work
+		// already streamed to the user. Only a failure before anything was shown is
+		// recoverable that way.
+		if (producedOutput) throw err;
+		logger.warn({ err: msg }, "[mcp] flow failed before any output; falling back");
 	}
+	// Note: pooled MCP clients are shared across concurrent requests, so they must NOT be
+	// closed here — that rejects other turns' in-flight tool calls with "-32000 Connection
+	// closed". Idle clients are reclaimed by the pool's sweeper instead (see clientPool.ts).
 
 	return "not_applicable";
 }

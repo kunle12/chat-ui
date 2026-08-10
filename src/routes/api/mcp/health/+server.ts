@@ -1,11 +1,12 @@
-import { Client } from "@modelcontextprotocol/sdk/client/index.js";
+import type { Client } from "@modelcontextprotocol/sdk/client/index.js";
+import { createMcpClient } from "$lib/server/mcp/client";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
 import { SSEClientTransport } from "@modelcontextprotocol/sdk/client/sse.js";
 import type { KeyValuePair } from "$lib/types/Tool";
 import { config } from "$lib/server/config";
 import { logger } from "$lib/server/logger";
 import type { RequestHandler } from "./$types";
-import { isValidUrl } from "$lib/server/urlSafety";
+import { isValidUrl, mcpFetch } from "$lib/server/urlSafety";
 import { isStrictHfMcpLogin, hasNonEmptyToken, isExaMcpServer } from "$lib/server/mcp/hf";
 
 interface HealthCheckRequest {
@@ -40,7 +41,7 @@ export const POST: RequestHandler = async ({ request, locals }) => {
 
 		// URL validation handled above
 
-		if (!isValidUrl(url)) {
+		if (!isValidUrl(url, { allowInsecure: true })) {
 			return new Response(
 				JSON.stringify({
 					ready: false,
@@ -106,12 +107,12 @@ export const POST: RequestHandler = async ({ request, locals }) => {
 		// Try Streamable HTTP transport first
 		try {
 			logger.info({}, `[MCP Health] Trying HTTP transport for ${url}`);
-			client = new Client({
-				name: "chat-ui-health-check",
-				version: "1.0.0",
-			});
+			client = createMcpClient("health");
 
-			const transport = new StreamableHTTPClientTransport(baseUrl, { requestInit });
+			const transport = new StreamableHTTPClientTransport(baseUrl, {
+				requestInit,
+				fetch: mcpFetch,
+			});
 			logger.info({}, `[MCP Health] Connecting to ${url}...`);
 			await client.connect(transport);
 			logger.info({}, `[MCP Health] Connected successfully via HTTP`);
@@ -157,7 +158,7 @@ export const POST: RequestHandler = async ({ request, locals }) => {
 		} catch (error) {
 			httpError = error instanceof Error ? error : new Error(String(error));
 			lastError = httpError;
-			logger.warn(lastError.message, "Streamable HTTP failed, trying SSE transport...");
+			logger.warn({ err: lastError }, "Streamable HTTP failed, trying SSE transport...");
 
 			// Close failed client
 			try {
@@ -169,12 +170,12 @@ export const POST: RequestHandler = async ({ request, locals }) => {
 			// Try SSE transport
 			try {
 				logger.info({}, `[MCP Health] Trying SSE transport for ${url}`);
-				client = new Client({
-					name: "chat-ui-health-check",
-					version: "1.0.0",
-				});
+				client = createMcpClient("health");
 
-				const sseTransport = new SSEClientTransport(baseUrl, { requestInit });
+				const sseTransport = new SSEClientTransport(baseUrl, {
+					requestInit,
+					fetch: mcpFetch,
+				});
 				logger.info({}, `[MCP Health] Connecting via SSE...`);
 				await client.connect(sseTransport);
 				logger.info({}, `[MCP Health] Connected successfully via SSE`);

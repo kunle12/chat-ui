@@ -31,6 +31,14 @@ import sql from "highlight.js/lib/languages/sql";
 import plaintext from "highlight.js/lib/languages/plaintext";
 import { parseIncompleteMarkdown } from "./parseIncompleteMarkdown";
 import { parseMarkdownIntoBlocks } from "./parseBlocks";
+import { escapeHTML, type BlockToken, type Token } from "./markedLight";
+
+// Re-export the light pieces so existing consumers of this module (the worker,
+// tests) keep a single import site. Main-thread code must import them from
+// ./markedLight directly — importing this module eagerly pulls KaTeX +
+// highlight.js into the entry bundle.
+export { escapeHTML, fallbackBlocks } from "./markedLight";
+export type { BlockToken, CodeToken, TextToken, Token } from "./markedLight";
 
 const bundledLanguages: [string, LanguageFn][] = [
 	["javascript", javascript],
@@ -56,6 +64,18 @@ const bundledLanguages: [string, LanguageFn][] = [
 ];
 
 bundledLanguages.forEach(([name, language]) => hljs.registerLanguage(name, language));
+
+// highlight.js and KaTeX run synchronously and can block their thread for a long time
+// on large or pathological inputs (e.g. a model dumping a huge unlabeled code block or
+// a giant math expression). SSR no longer runs this pipeline (see fallbackBlocks), but
+// these caps still protect the markdown worker and the async processBlocks fallback.
+// Output is unchanged for normal content and only degrades gracefully (escaped text)
+// past these sizes.
+const MAX_HIGHLIGHT_LENGTH = 50_000;
+// Auto-detection tries every registered language, so it is far more expensive than
+// single-language highlighting and gets a tighter cap.
+const MAX_AUTO_HIGHLIGHT_LENGTH = 5_000;
+const MAX_KATEX_LENGTH = 10_000;
 
 // Media URL detection
 const VIDEO_EXTENSIONS = /\.(mp4|webm|ogg|mov|m4v)([?#]|$)/i;
@@ -111,6 +131,16 @@ interface katexInlineToken extends Tokens.Generic {
 	displayMode: false;
 }
 
+function renderKatex(token: katexBlockToken | katexInlineToken): string {
+	if (token.text.length > MAX_KATEX_LENGTH) {
+		return escapeHTML(token.raw);
+	}
+	return katex.renderToString(token.text, {
+		throwOnError: false,
+		displayMode: token.displayMode,
+	});
+}
+
 export const katexBlockExtension: TokenizerExtension & RendererExtension = {
 	name: "katexBlock",
 	level: "block",
@@ -152,10 +182,7 @@ export const katexBlockExtension: TokenizerExtension & RendererExtension = {
 
 	renderer(token) {
 		if (token.type === "katexBlock") {
-			return katex.renderToString(token.text, {
-				throwOnError: false,
-				displayMode: token.displayMode,
-			});
+			return renderKatex(token as katexBlockToken);
 		}
 		return undefined;
 	},
@@ -202,28 +229,11 @@ const katexInlineExtension: TokenizerExtension & RendererExtension = {
 
 	renderer(token) {
 		if (token.type === "katexInline") {
-			return katex.renderToString(token.text, {
-				throwOnError: false,
-				displayMode: token.displayMode,
-			});
+			return renderKatex(token as katexInlineToken);
 		}
 		return undefined;
 	},
 };
-
-function escapeHTML(content: string) {
-	return content.replace(
-		/[<>&"']/g,
-		(x) =>
-			({
-				"<": "&lt;",
-				">": "&gt;",
-				"&": "&amp;",
-				"'": "&#39;",
-				'"': "&quot;",
-			})[x] || x
-	);
-}
 
 function addInlineCitations(md: string, webSearchSources: SimpleSource[] = []): string {
 	const linkStyle =
@@ -255,13 +265,23 @@ function sanitizeHref(href?: string | null): string | undefined {
 	return trimmed.replace(/>$/, "");
 }
 
-function highlightCode(text: string, lang?: string): string {
+export function highlightCode(text: string, lang?: string): string {
+	// Very large blocks would block the event loop for too long; render them as
+	// escaped plain text instead.
+	if (text.length > MAX_HIGHLIGHT_LENGTH) {
+		return escapeHTML(text);
+	}
 	if (lang && hljs.getLanguage(lang)) {
 		try {
 			return hljs.highlight(text, { language: lang, ignoreIllegals: true }).value;
 		} catch {
 			// fall through to auto-detect
 		}
+	}
+	// Auto-detection runs every grammar over the input and is the most expensive path;
+	// skip it for larger blocks rather than stalling the event loop.
+	if (text.length > MAX_AUTO_HIGHLIGHT_LENGTH) {
+		return escapeHTML(text);
 	}
 	return hljs.highlightAuto(text).value;
 }
@@ -350,6 +370,11 @@ function createMarkedInstance(sources: SimpleSource[]): Marked {
 		extensions: [katexBlockExtension, katexInlineExtension],
 		renderer: {
 			link: (href, title, text) => {
+				// Placeholder emitted by parseIncompleteMarkdown while a link's URL is
+				// still streaming in: render an inert anchor instead of a dead link.
+				if (href === "streamdown:incomplete-link") {
+					return `<a data-incomplete-link>${text}</a>`;
+				}
 				const safeHref = sanitizeHref(href);
 				return safeHref
 					? `<a href="${escapeHTML(safeHref)}" target="_blank" rel="noreferrer">${text}</a>`
@@ -390,20 +415,22 @@ function isFencedBlockClosed(raw?: string): boolean {
 	return closingFencePattern.test(trimmed);
 }
 
-type CodeToken = {
-	type: "code";
-	lang: string;
-	code: string;
-	rawCode: string;
-	isClosed: boolean;
-};
-
-type TextToken = {
-	type: "text";
-	html: string | Promise<string>;
-};
-
 const blockCache = new Map<string, BlockToken>();
+
+// The markdown worker pool keeps a small number of long-lived workers alive for the whole
+// session, so their blockCache no longer dies with a per-message worker. Bound it (Map
+// preserves insertion order, so deleting the first key evicts the oldest entry) to keep
+// memory flat across very long / many conversations. Comfortably larger than any single
+// conversation, so normal usage still gets full cache hits.
+const BLOCK_CACHE_MAX = 2000;
+
+function rememberBlock(key: string, block: BlockToken) {
+	blockCache.set(key, block);
+	if (blockCache.size > BLOCK_CACHE_MAX) {
+		const oldest = blockCache.keys().next().value;
+		if (oldest !== undefined) blockCache.delete(oldest);
+	}
+}
 
 function cacheKey(index: number, blockContent: string, sources: SimpleSource[]) {
 	const sourceKey = sources.map((s) => s.link).join("|");
@@ -411,11 +438,8 @@ function cacheKey(index: number, blockContent: string, sources: SimpleSource[]) 
 }
 
 export async function processTokens(content: string, sources: SimpleSource[]): Promise<Token[]> {
-	// Apply incomplete markdown preprocessing for smooth streaming
-	const processedContent = parseIncompleteMarkdown(content);
-
 	const marked = createMarkedInstance(sources);
-	const tokens = marked.lexer(processedContent);
+	const tokens = marked.lexer(content);
 
 	const processedTokens = await Promise.all(
 		tokens.map(async (token) => {
@@ -440,11 +464,8 @@ export async function processTokens(content: string, sources: SimpleSource[]): P
 }
 
 export function processTokensSync(content: string, sources: SimpleSource[]): Token[] {
-	// Apply incomplete markdown preprocessing for smooth streaming
-	const processedContent = parseIncompleteMarkdown(content);
-
 	const marked = createMarkedInstance(sources);
-	const tokens = marked.lexer(processedContent);
+	const tokens = marked.lexer(content);
 	return tokens.map((token) => {
 		if (token.type === "code") {
 			return {
@@ -458,14 +479,6 @@ export function processTokensSync(content: string, sources: SimpleSource[]): Tok
 		return { type: "text" as const, html: marked.parse(token.raw) };
 	});
 }
-
-export type Token = CodeToken | TextToken;
-
-export type BlockToken = {
-	id: string;
-	content: string;
-	tokens: Token[];
-};
 
 /**
  * Simple hash function for generating stable block IDs
@@ -483,12 +496,19 @@ function hashString(str: string): string {
 /**
  * Process markdown content into blocks with stable IDs for efficient memoization.
  * Each block is processed independently and assigned a content-based hash ID.
+ *
+ * `streaming` applies incomplete-markdown repairs (remend) to the content before
+ * splitting, like upstream streamdown does in streaming mode. It must be false for
+ * completed messages so valid final markdown (e.g. a trailing setext heading) is
+ * not rewritten by the streaming flash guards.
  */
 export async function processBlocks(
 	content: string,
-	sources: SimpleSource[] = []
+	sources: SimpleSource[] = [],
+	streaming = false
 ): Promise<BlockToken[]> {
-	const blocks = parseMarkdownIntoBlocks(content);
+	const processedContent = streaming ? parseIncompleteMarkdown(content) : content;
+	const blocks = parseMarkdownIntoBlocks(processedContent);
 
 	return await Promise.all(
 		blocks.map(async (blockContent, index) => {
@@ -502,17 +522,23 @@ export async function processBlocks(
 				content: blockContent,
 				tokens,
 			};
-			blockCache.set(key, block);
+			rememberBlock(key, block);
 			return block;
 		})
 	);
 }
 
 /**
- * Synchronous version of processBlocks for SSR
+ * Synchronous version of processBlocks. Kept for non-SSR callers and tests; it is no
+ * longer used on the SSR render path (see fallbackBlocks).
  */
-export function processBlocksSync(content: string, sources: SimpleSource[] = []): BlockToken[] {
-	const blocks = parseMarkdownIntoBlocks(content);
+export function processBlocksSync(
+	content: string,
+	sources: SimpleSource[] = [],
+	streaming = false
+): BlockToken[] {
+	const processedContent = streaming ? parseIncompleteMarkdown(content) : content;
+	const blocks = parseMarkdownIntoBlocks(processedContent);
 
 	return blocks.map((blockContent, index) => {
 		const key = cacheKey(index, blockContent, sources);
@@ -525,7 +551,7 @@ export function processBlocksSync(content: string, sources: SimpleSource[] = [])
 			content: blockContent,
 			tokens,
 		};
-		blockCache.set(key, block);
+		rememberBlock(key, block);
 		return block;
 	});
 }

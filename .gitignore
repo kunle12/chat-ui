@@ -13,7 +13,16 @@ SECRET_CONFIG
 !.env
 gcp-*.json
 db
+# Output of scripts/artifact-real-eval.ts (real-model eval transcripts)
+eval-output/
+# Output of `npm run test:coverage`
+coverage/
 models/*
 !models/add-your-models-here.txt
 .claude/*
 !.claude/skills/
+# Playwright e2e output
+/test-results
+/playwright-report
+/blob-report
+/playwright/.cache

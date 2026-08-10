@@ -1,7 +1,7 @@
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import { ObjectId } from "mongodb";
 
-import { collections } from "$lib/server/database";
+import { collections, ready } from "$lib/server/database";
 import { AbortRegistry } from "$lib/server/abortRegistry";
 import {
 	cleanupTestData,
@@ -10,6 +10,11 @@ import {
 	createTestUser,
 } from "$lib/server/api/__tests__/testHelpers";
 import { POST } from "../../../routes/conversation/[id]/stop-generating/+server";
+
+// `collections` is undefined until the database IIFE resolves.
+beforeAll(async () => {
+	await ready;
+});
 
 describe.sequential("POST /conversation/[id]/stop-generating", () => {
 	afterEach(async () => {
@@ -41,6 +46,52 @@ describe.sequential("POST /conversation/[id]/stop-generating", () => {
 			expect(marker?.updatedAt).toBeInstanceOf(Date);
 		}
 	);
+
+	it("stores the stop point from the request body on the marker", async () => {
+		const { locals } = await createTestUser();
+		const conversation = await createTestConversation(locals);
+		const generationId = "22222222-2222-4222-8222-222222222222";
+
+		const response = await POST({
+			params: { id: conversation._id.toString() },
+			locals,
+			request: new Request("http://localhost/stop-generating", {
+				method: "POST",
+				headers: { "Content-Type": "application/json" },
+				body: JSON.stringify({ generationId, seenContentLength: 1234 }),
+			}),
+		} as never);
+
+		expect(response.status).toBe(200);
+		const marker = await collections.abortedGenerations.findOne({
+			conversationId: conversation._id,
+		});
+		expect(marker?.generationId).toBe(generationId);
+		expect(marker?.seenContentLength).toBe(1234);
+	});
+
+	it("ignores malformed stop-point bodies but still records the stop", async () => {
+		const { locals } = await createTestUser();
+		const conversation = await createTestConversation(locals);
+
+		const response = await POST({
+			params: { id: conversation._id.toString() },
+			locals,
+			request: new Request("http://localhost/stop-generating", {
+				method: "POST",
+				headers: { "Content-Type": "application/json" },
+				body: JSON.stringify({ generationId: "not-a-uuid", seenContentLength: -5 }),
+			}),
+		} as never);
+
+		expect(response.status).toBe(200);
+		const marker = await collections.abortedGenerations.findOne({
+			conversationId: conversation._id,
+		});
+		expect(marker).not.toBeNull();
+		expect(marker?.generationId).toBeUndefined();
+		expect(marker?.seenContentLength).toBeUndefined();
+	});
 
 	it("updates updatedAt while preserving createdAt on repeated stop", async () => {
 		const { locals } = await createTestUser();

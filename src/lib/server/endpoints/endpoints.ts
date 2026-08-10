@@ -7,7 +7,7 @@ import type {
 } from "@huggingface/inference";
 import { z } from "zod";
 import { endpointOAIParametersSchema, endpointOai } from "./openai/endpointOai";
-import type { Model } from "$lib/types/Model";
+import type { BackendModel } from "$lib/server/models";
 import type { ObjectId } from "mongodb";
 
 export type EndpointMessage = Omit<Message, "id">;
@@ -16,13 +16,15 @@ export type EndpointMessage = Omit<Message, "id">;
 export interface EndpointParameters {
 	messages: EndpointMessage[];
 	preprompt?: Conversation["preprompt"];
-	generateSettings?: Partial<Model["parameters"]>;
+	generateSettings?: Partial<BackendModel["parameters"]>;
 	isMultimodal?: boolean;
 	conversationId?: ObjectId;
 	locals: App.Locals | undefined;
 	abortSignal?: AbortSignal;
 	/** Inference provider preference: "auto", "fastest", "cheapest", or a specific provider name */
 	provider?: string;
+	/** Optional thinking-effort, forwarded as OpenAI `reasoning_effort` when set */
+	reasoningEffort?: "low" | "medium" | "high";
 }
 
 export type TextGenerationStreamOutputSimplified = TextGenerationStreamOutput & {

@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { requireAuthUser } from "$lib/utils/auth";
+	import { mimeMatchesAllowlist } from "$lib/utils/mimeMatch";
 	import CarbonImage from "~icons/carbon/image";
 
 	interface Props {
@@ -31,16 +32,7 @@
 					if (file) {
 						// check if the file matches the mimeTypes
 						// else abort
-						if (
-							!mimeTypes.some((mimeType: string) => {
-								const [type, subtype] = mimeType.split("/");
-								const [fileType, fileSubtype] = file.type.split("/");
-								return (
-									(type === "*" || type === fileType) &&
-									(subtype === "*" || subtype === fileSubtype)
-								);
-							})
-						) {
+						if (!mimeMatchesAllowlist(file.type, mimeTypes)) {
 							setErrorMsg(
 								`Some file type not supported. Only allowed: ${mimeTypes.join(
 									", "
@@ -84,7 +76,7 @@
 		e.preventDefault();
 	}}
 	class="relative flex h-28 w-full max-w-4xl flex-col items-center justify-center gap-1 rounded-xl border-2 border-dotted {onDragInner
-		? 'border-blue-200 !bg-blue-600/10 text-blue-600 *:pointer-events-none dark:border-blue-600 dark:bg-blue-600/20 dark:text-blue-600'
+		? 'border-blue-200 bg-blue-600/10! text-blue-600 *:pointer-events-none dark:border-blue-600 dark:bg-blue-600/20 dark:text-blue-600'
 		: 'bg-gray-100 text-gray-500 dark:border-gray-500 dark:bg-gray-700 dark:text-gray-400'}"
 >
 	<CarbonImage class="text-xl" />

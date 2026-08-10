@@ -23,6 +23,7 @@ export async function* generate(
 		promptedAt,
 		forceMultimodal,
 		provider,
+		reasoningEffort,
 		locals,
 		abortController,
 	}: GenerateContext,
@@ -35,8 +36,7 @@ export async function* generate(
 	let status = "";
 	const startTime = new Date();
 	const modelReasoning = Reflect.get(model, "reasoning") as
-		| { type: string; beginToken?: string; endToken?: string; regex?: string }
-		| undefined;
+		{ type: string; beginToken?: string; endToken?: string; regex?: string } | undefined;
 	if (
 		modelReasoning &&
 		(modelReasoning.type === "regex" ||
@@ -62,6 +62,7 @@ export async function* generate(
 		locals,
 		abortSignal: abortController.signal,
 		provider,
+		reasoningEffort,
 	});
 
 	for await (const output of stream) {

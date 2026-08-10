@@ -1,10 +1,18 @@
 import { Client } from "@modelcontextprotocol/sdk/client";
-import { getClient, evictFromPool } from "./clientPool";
+import { StreamableHTTPError } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
+import { getClient, evictFromPool, retainClient, releaseClient } from "./clientPool";
 import { config } from "$lib/server/config";
 
 function isConnectionClosedError(err: unknown): boolean {
 	const message = err instanceof Error ? err.message : String(err);
 	return message.includes("-32000") || message.toLowerCase().includes("connection closed");
+}
+
+// Per the MCP Streamable HTTP spec, a 404 on a request carrying a session ID means the
+// session expired and the client MUST start a new session with a new InitializeRequest —
+// which is exactly what reconnecting with a fresh client does.
+function isSessionExpiredError(err: unknown): boolean {
+	return err instanceof StreamableHTTPError && err.code === 404;
 }
 
 export interface McpServerConfig {
@@ -28,6 +36,12 @@ export function getMcpToolTimeoutMs(): number {
 
 export type McpToolTextResponse = {
 	text: string;
+	/**
+	 * The server reported the call as failed. MCP returns tool failures as a normal
+	 * result with `isError: true` and the failure text in the content blocks, so this
+	 * never surfaces as a thrown error — callers must check it explicitly.
+	 */
+	isError: boolean;
 	/** If the server returned structuredContent, include it raw */
 	structured?: unknown;
 	/** Raw content blocks returned by the server, if any */
@@ -61,8 +75,8 @@ export async function callMcpTool(
 			? (args as Record<string, unknown>)
 			: undefined;
 
-	// Get a (possibly pooled) client. The client itself was connected with a signal
-	// that already composes outer cancellation. We still enforce a per-call timeout here.
+	// Get a (possibly pooled) client. Cancellation and timeout are enforced per call
+	// via the request options below, not on the pooled transport itself.
 	let activeClient = client ?? (await getClient(server, signal));
 
 	const callToolOptions = {
@@ -77,31 +91,46 @@ export async function callMcpTool(
 			});
 		},
 		resetTimeoutOnProgress: true,
+		// The spec requires a maximum total timeout even when progress resets the per-step one.
+		maxTotalTimeout: timeoutMs * 10,
 	};
 
+	// The connection can be closed at any point during a (potentially long-running) call,
+	// e.g. by a proxy idle timeout or a server restart, so retry on a fresh client.
+	const maxReconnectAttempts = 2;
 	let response;
-	try {
-		response = await activeClient.callTool(
-			{ name: tool, arguments: normalizedArgs },
-			undefined,
-			callToolOptions
-		);
-	} catch (err) {
-		if (!isConnectionClosedError(err)) {
-			throw err;
+	for (let attempt = 0; ; attempt++) {
+		// Keep a stable reference for retain/release: `activeClient` is reassigned on retry.
+		const currentClient = activeClient;
+		retainClient(currentClient);
+		try {
+			response = await currentClient.callTool(
+				{ name: tool, arguments: normalizedArgs },
+				undefined,
+				callToolOptions
+			);
+			break;
+		} catch (err) {
+			if (
+				attempt >= maxReconnectAttempts ||
+				signal?.aborted ||
+				!(isConnectionClosedError(err) || isSessionExpiredError(err))
+			) {
+				throw err;
+			}
+
+			// Evict stale client and close it
+			const stale = evictFromPool(server);
+			stale?.close?.().catch(() => {});
+
+			// Brief backoff before later retries (the server may be mid-restart)
+			if (attempt > 0) {
+				await new Promise((resolve) => setTimeout(resolve, 1_000 * attempt));
+			}
+			activeClient = await getClient(server, signal);
+		} finally {
+			releaseClient(currentClient);
 		}
-
-		// Evict stale client and close it
-		const stale = evictFromPool(server);
-		stale?.close?.().catch(() => {});
-
-		// Retry with fresh client
-		activeClient = await getClient(server, signal);
-		response = await activeClient.callTool(
-			{ name: tool, arguments: normalizedArgs },
-			undefined,
-			callToolOptions
-		);
 	}
 
 	const parts = Array.isArray(response?.content) ? (response.content as Array<unknown>) : [];
@@ -118,5 +147,6 @@ export async function callMcpTool(
 	const contentBlocks = Array.isArray(response?.content)
 		? (response.content as unknown[])
 		: undefined;
-	return { text, structured, content: contentBlocks };
+	const isError = (response as unknown as { isError?: unknown })?.isError === true;
+	return { text, isError, structured, content: contentBlocks };
 }

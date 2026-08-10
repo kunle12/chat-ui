@@ -117,16 +117,22 @@ export function useAPIClient({
 			reports: endpoint(fetcher, `${baseUrl}/user/reports`),
 			"billing-orgs": endpoint(fetcher, `${baseUrl}/user/billing-orgs`),
 		},
-		models: {
-			...endpoint(fetcher, `${baseUrl}/models`),
-			old: endpoint(fetcher, `${baseUrl}/models/old`),
-			refresh: endpoint(fetcher, `${baseUrl}/models/refresh`),
+		models: Object.assign(
+			// client.models({ id: "org/name" }) — per-model detail (providers, parameters).
+			// Model ids may contain a slash; the path resolves to /models/[namespace]([/model]).
+			(params: { id: string }) => endpoint(fetcher, `${baseUrl}/models/${params.id}`),
+			{
+				...endpoint(fetcher, `${baseUrl}/models`),
+				old: endpoint(fetcher, `${baseUrl}/models/old`),
+			}
+		),
+		spaces: {
+			deploy: endpoint(fetcher, `${baseUrl}/spaces/deploy`),
 		},
 		"public-config": endpoint(fetcher, `${baseUrl}/public-config`),
 		"feature-flags": endpoint(fetcher, `${baseUrl}/feature-flags`),
 		debug: {
 			config: endpoint(fetcher, `${baseUrl}/debug/config`),
-			refresh: endpoint(fetcher, `${baseUrl}/debug/refresh`),
 		},
 		export: endpoint(fetcher, `${baseUrl}/export`),
 	};

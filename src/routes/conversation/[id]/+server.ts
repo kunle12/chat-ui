@@ -25,7 +25,35 @@ import { textGeneration } from "$lib/server/textGeneration";
 import type { TextGenerationContext } from "$lib/server/textGeneration/types";
 import { logger } from "$lib/server/logger.js";
 import { AbortRegistry } from "$lib/server/abortRegistry";
+import { createGenerationWriter, type GenerationWriter } from "$lib/server/generation/writer";
+import { clampStoppedContent } from "$lib/server/stopTruncation";
 import { MetricsServer } from "$lib/server/metrics";
+import { randomUUID } from "$lib/utils/randomUuid";
+
+// How long a stop marker is protected from the pre-flight cleanup of a new
+// generation. A marker younger than this may still be awaiting observation by
+// a running generation's 300ms watcher (possibly on another pod); deleting it
+// would lose the stop. Aborted generations consume their marker on shutdown,
+// so markers normally live far shorter than this.
+const STOP_MARKER_GRACE_MS = 5_000;
+
+// Shape a message's updates for storage: drop keepalives and replace each stream token
+// with a length marker (content is stored separately), preserving ordering without
+// duplicating text. Shared by the full save and the writer's incremental materialise so
+// both persist the same thing under materializedSeq.
+function compressUpdatesForStorage(updates: Message["updates"]): Message["updates"] {
+	return (
+		updates
+			?.filter(
+				(u) => !(u.type === MessageUpdateType.Status && u.status === MessageUpdateStatus.KeepAlive)
+			)
+			.map((u) => {
+				if (u.type !== MessageUpdateType.Stream) return u;
+				const len = u.len ?? (u.token ?? "").length;
+				return { type: MessageUpdateType.Stream, token: "", len } satisfies MessageStreamUpdate;
+			}) ?? []
+	);
+}
 
 export async function POST({ request, locals, params, getClientAddress }) {
 	const id = z.string().parse(params.id);
@@ -40,60 +68,83 @@ export async function POST({ request, locals, params, getClientAddress }) {
 	}
 
 	// check if the user has access to the conversation
-	const convBeforeCheck = await collections.conversations.findOne({
+	let conv = await collections.conversations.findOne({
 		_id: convId,
 		...authCondition(locals),
 	});
 
-	if (convBeforeCheck && !convBeforeCheck.rootMessageId) {
+	if (conv && !conv.rootMessageId) {
 		const res = await collections.conversations.updateOne(
 			{
 				_id: convId,
 			},
 			{
-				$set: {
-					...convBeforeCheck,
-					...convertLegacyConversation(convBeforeCheck),
-				},
+				$set: { ...conv, ...convertLegacyConversation(conv) },
 			}
 		);
 
 		if (!res.acknowledged) {
 			error(500, "Failed to convert conversation");
 		}
-	}
 
-	const conv = await collections.conversations.findOne({
-		_id: convId,
-		...authCondition(locals),
-	});
+		// Re-read what actually persisted rather than trusting our in-memory
+		// conversion: concurrent requests converting the same legacy conversation
+		// each mint different synthetic root/message ids, and only one $set wins.
+		// Appending to a losing tree would corrupt the conversation. The re-fetch
+		// stays inside this branch so the common (already-converted) path keeps
+		// its single findOne.
+		conv = await collections.conversations.findOne({
+			_id: convId,
+			...authCondition(locals),
+		});
+	}
 
 	if (!conv) {
 		error(404, "Conversation not found");
 	}
 
-	// register the event for ratelimiting
-	await collections.messageEvents.insertOne({
-		type: "message",
-		userId,
-		createdAt: new Date(),
-		expiresAt: new Date(Date.now() + 60_000),
-		ip: getClientAddress(),
-	});
+	// A new generation invalidates any stale stop marker for this conversation.
+	// The abortedGenerations collection is the cross-pod abort channel:
+	// stop-generating upserts a marker, and the watcher in the stream below
+	// polls it. Clearing stale markers here — before the client could possibly
+	// issue a stop for THIS generation (its fetch has not returned yet) — means
+	// any marker observed later was meant for us, with no wall-clock comparison
+	// between pods needed. Markers younger than the grace window are preserved:
+	// they belong to a stop for a still-winding-down generation in this same
+	// conversation (e.g. issued from another tab), whose watcher must get the
+	// chance to observe them; aborted generations consume their marker on
+	// shutdown, so a fresh marker is never a stale one.
+	await Promise.all([
+		collections.abortedGenerations.deleteOne({
+			conversationId: convId,
+			updatedAt: { $lt: new Date(Date.now() - STOP_MARKER_GRACE_MS) },
+		}),
+		// register the event for ratelimiting; must complete before the counts
+		// below so the current message is included in its own rate-limit window
+		collections.messageEvents.insertOne({
+			type: "message",
+			userId,
+			createdAt: new Date(),
+			expiresAt: new Date(Date.now() + 60_000),
+			ip: getClientAddress(),
+		}),
+	]);
 
 	if (usageLimits?.messagesPerMinute) {
 		// check if the user is rate limited
 		const nEvents = Math.max(
-			await collections.messageEvents.countDocuments({
-				userId,
-				type: "message",
-				expiresAt: { $gt: new Date() },
-			}),
-			await collections.messageEvents.countDocuments({
-				ip: getClientAddress(),
-				type: "message",
-				expiresAt: { $gt: new Date() },
-			})
+			...(await Promise.all([
+				collections.messageEvents.countDocuments({
+					userId,
+					type: "message",
+					expiresAt: { $gt: new Date() },
+				}),
+				collections.messageEvents.countDocuments({
+					ip: getClientAddress(),
+					type: "message",
+					expiresAt: { $gt: new Date() },
+				}),
+			]))
 		);
 		if (nEvents > usageLimits.messagesPerMinute) {
 			error(429, ERROR_MESSAGES.rateLimited);
@@ -127,11 +178,16 @@ export async function POST({ request, locals, params, getClientAddress }) {
 		inputs: newPrompt,
 		id: messageId,
 		is_retry: isRetry,
+		generationId,
 		selectedMcpServerNames,
 		selectedMcpServers,
+		timezone,
 	} = z
 		.object({
 			id: z.string().uuid().refine(isMessageId).optional(), // parent message id to append to for a normal message, or the message id for a retry/continue
+			// client-chosen id for this generation run, echoed back by the stop
+			// request so a stop point can be matched to the run it belongs to
+			generationId: z.string().uuid().optional(),
 			inputs: z.optional(
 				z
 					.string()
@@ -153,6 +209,7 @@ export async function POST({ request, locals, params, getClientAddress }) {
 					)
 				)
 				.default([]),
+			timezone: z.optional(z.string()),
 			files: z.optional(
 				z.array(
 					z.object({
@@ -181,6 +238,11 @@ export async function POST({ request, locals, params, getClientAddress }) {
 		};
 	} catch {
 		// ignore attachment errors, pipeline will just use env servers
+	}
+
+	// Attach user timezone so the tool prompt can include localized time
+	if (timezone) {
+		(locals as unknown as Record<string, unknown>).timezone = timezone;
 	}
 
 	const inputFiles = await Promise.all(
@@ -315,6 +377,10 @@ export async function POST({ request, locals, params, getClientAddress }) {
 		error(500, "Failed to create prompt");
 	}
 
+	// The stamp is what tells a reader a log exists; every run records one.
+	const effectiveGenerationId = generationId ?? randomUUID();
+	messageToWriteTo.generationId = effectiveGenerationId;
+
 	// update the conversation with the new messages
 	await collections.conversations.updateOne(
 		{ _id: convId },
@@ -331,24 +397,19 @@ export async function POST({ request, locals, params, getClientAddress }) {
 	const metricsModelId = model.id ?? model.name ?? conv.model;
 	const metricsLabels = { model: metricsModelId };
 
-	const persistConversation = async () => {
-		const messagesForSave = conv.messages.map((msg) => {
-			const filteredUpdates =
-				msg.updates
-					?.filter(
-						(u) =>
-							!(u.type === MessageUpdateType.Status && u.status === MessageUpdateStatus.KeepAlive)
-					)
-					.map((u) => {
-						if (u.type !== MessageUpdateType.Stream) return u;
-						// Preserve existing len if already compressed, otherwise compute from token
-						const len = u.len ?? (u.token ?? "").length;
-						// store a lightweight marker to preserve ordering without duplicating content
-						return { type: MessageUpdateType.Stream, token: "", len } satisfies MessageStreamUpdate;
-					}) ?? [];
+	let generationWriter: GenerationWriter | undefined;
 
-			return { ...msg, updates: filteredUpdates };
-		});
+	const persistConversation = async () => {
+		// This rewrites the whole messages array, so stamp materializedSeq from the same
+		// synchronous instant as the content below, or a reader resumes from a stale point
+		// and replays text the message already contains.
+		if (generationWriter && messageToWriteTo) {
+			messageToWriteTo.materializedSeq = generationWriter.currentSeq();
+		}
+		const messagesForSave = conv.messages.map((msg) => ({
+			...msg,
+			updates: compressUpdatesForStorage(msg.updates),
+		}));
 
 		await collections.conversations.updateOne(
 			{ _id: convId },
@@ -364,6 +425,49 @@ export async function POST({ request, locals, params, getClientAddress }) {
 			const conversationKey = convId.toString();
 			const ctrl = new AbortController();
 			abortRegistry.register(conversationKey, ctrl);
+
+			// Cross-pod and pre-first-token abort path. The in-process registry
+			// only works when the stop request lands on this pod, and the cached
+			// AbortedGenerations map is only consulted between tokens — useless
+			// while awaiting the first token of a slow (e.g. reasoning) model.
+			// Poll the marker collection directly and abort the upstream request
+			// as soon as a stop is observed. Pre-flight deleted any stale marker,
+			// so marker presence means a stop for this generation.
+			const abortMarkerWatcher = setInterval(() => {
+				collections.abortedGenerations
+					.findOne({ conversationId: convId })
+					.then((marker) => {
+						if (marker && !ctrl.signal.aborted) {
+							logger.info(
+								{ conversationId: conversationKey },
+								"Stop marker observed; aborting generation"
+							);
+							ctrl.abort();
+						}
+						if (marker || ctrl.signal.aborted) {
+							clearInterval(abortMarkerWatcher);
+						}
+					})
+					.catch(() => {
+						// transient DB error; the next tick retries
+					});
+			}, 300);
+
+			const writer = await createGenerationWriter({
+				generationId: effectiveGenerationId,
+				conversationId: convId,
+				messageId: messageToWriteTo.id,
+				userId: locals.user?._id,
+				sessionId: locals.sessionId,
+				snapshot: () => ({
+					content: messageToWriteTo.content,
+					reasoning: messageToWriteTo.reasoning,
+					files: messageToWriteTo.files,
+					routerMetadata: messageToWriteTo.routerMetadata,
+					updates: compressUpdatesForStorage(messageToWriteTo.updates),
+				}),
+			});
+			generationWriter = writer;
 
 			let finalAnswerReceived = false;
 			let abortedByUser = false;
@@ -499,16 +603,17 @@ export async function POST({ request, locals, params, getClientAddress }) {
 				}
 
 				// Append updates for audit/replay (streams too, to preserve ordering)
-				if (
-					!(
-						event.type === MessageUpdateType.Status &&
-						event.status === MessageUpdateStatus.KeepAlive
-					)
-				) {
+				if (!(
+					event.type === MessageUpdateType.Status && event.status === MessageUpdateStatus.KeepAlive
+				)) {
 					messageToWriteTo?.updates?.push(
 						event.type === MessageUpdateType.Stream ? { ...event } : event
 					);
 				}
+
+				// Before the padding below rewrites `event`: the log stores what was
+				// actually generated, not the padded wire form.
+				writer.push(event);
 
 				// Avoid remote keylogging attack executed by watching packet lengths
 				// by padding the text with null chars to a fixed length
@@ -536,14 +641,34 @@ export async function POST({ request, locals, params, getClientAddress }) {
 				};
 
 				await enqueueUpdate();
-
-				if (clientDetached) {
-					await persistConversation();
-				}
 			}
 
 			let hasError = false;
 			const initialMessageContent = messageToWriteTo.content;
+
+			// Emit the streamed-so-far text as an interrupted final answer. The
+			// stopping client freezes its UI at the Stop click and reports its
+			// stop point on the abort marker, while tokens keep arriving here
+			// until the marker is observed (longer still when the stop request
+			// was delayed or retried). Clamp the text back to the stop point so
+			// the message persists exactly as the user last saw it instead of
+			// "growing back" on the next sync.
+			const emitInterruptedFinalAnswer = async () => {
+				const marker = await collections.abortedGenerations
+					.findOne({ conversationId: convId })
+					.catch(() => null);
+				messageToWriteTo.content = clampStoppedContent({
+					content: messageToWriteTo.content,
+					initialLength: initialMessageContent.length,
+					generationId,
+					marker,
+				});
+				await update({
+					type: MessageUpdateType.FinalAnswer,
+					text: messageToWriteTo.content.slice(initialMessageContent.length),
+					interrupted: true,
+				});
+			};
 
 			try {
 				// Fetch user settings once for all overrides and billing org
@@ -561,15 +686,26 @@ export async function POST({ request, locals, params, getClientAddress }) {
 					promptedAt,
 					ip: getClientAddress(),
 					username: locals.user?.username,
-					// Force-enable multimodal if user settings say so for this model
-					forceMultimodal: Boolean(userSettings?.multimodalOverrides?.[model.id]),
-					// Force-enable tools if user settings say so for this model
-					forceTools: Boolean(userSettings?.toolsOverrides?.[model.id]),
+					// Force-enable multimodal/tools if user settings say so for this model.
+					// On HuggingChat capability comes from the upstream router, so any stored
+					// per-user overrides are ignored — existing entries don't keep applying.
+					forceMultimodal:
+						!config.isHuggingChat && Boolean(userSettings?.multimodalOverrides?.[model.id]),
+					forceTools: !config.isHuggingChat && Boolean(userSettings?.toolsOverrides?.[model.id]),
 					// Inference provider preference (HuggingChat only, skip for router models)
 					provider:
 						config.isHuggingChat && !model.isRouter
 							? userSettings?.providerOverrides?.[model.id]
 							: undefined,
+					// Thinking-effort override (only forwarded for reasoning-capable models;
+					// per-user override can force-enable on self-hosted)
+					reasoningEffort:
+						(userSettings?.reasoningOverrides?.[model.id] ?? model.supportsReasoning)
+							? userSettings?.reasoningEffortOverrides?.[model.id]
+							: undefined,
+					// Artifacts aren't provider-determined, so the per-model user
+					// override applies on HuggingChat too
+					artifactsOverride: userSettings?.artifactsOverrides?.[model.id],
 					locals,
 					abortController: ctrl,
 				};
@@ -579,29 +715,22 @@ export async function POST({ request, locals, params, getClientAddress }) {
 					abortedByUser = true;
 				}
 				if (abortedByUser && !finalAnswerReceived) {
-					const partialText = messageToWriteTo.content.slice(initialMessageContent.length);
-					await update({
-						type: MessageUpdateType.FinalAnswer,
-						text: partialText,
-						interrupted: true,
-					});
+					await emitInterruptedFinalAnswer();
 				}
 			} catch (e) {
 				const err = e as Error;
 				const isAbortError =
 					err?.name === "AbortError" ||
 					err?.name === "APIUserAbortError" ||
+					// The OpenAI SDK's APIUserAbortError keeps name "Error", so
+					// match the class name too
+					err?.constructor?.name === "APIUserAbortError" ||
 					err?.message === "Request was aborted.";
 				if (isAbortError || ctrl.signal.aborted) {
 					abortedByUser = true;
 					logger.info({ conversationId: conversationKey }, "Generation aborted by user");
 					if (!finalAnswerReceived) {
-						const partialText = messageToWriteTo.content.slice(initialMessageContent.length);
-						await update({
-							type: MessageUpdateType.FinalAnswer,
-							text: partialText,
-							interrupted: true,
-						});
+						await emitInterruptedFinalAnswer();
 					}
 				} else {
 					hasError = true;
@@ -649,7 +778,23 @@ export async function POST({ request, locals, params, getClientAddress }) {
 			}
 
 			await persistConversation();
+			await writer.finish({
+				status: hasError ? "error" : abortedByUser ? "interrupted" : "completed",
+			});
+			clearInterval(abortMarkerWatcher);
 			abortRegistry.unregister(conversationKey, ctrl);
+
+			// Consume the stop marker once the stop has been honored and the
+			// interrupted state persisted. Markers are conversation-scoped, so a
+			// leftover would trip the watcher of the next generation; consuming
+			// here (instead of unconditionally deleting in pre-flight) keeps
+			// markers alive long enough for concurrent in-flight generations to
+			// observe them.
+			if (abortedByUser) {
+				await collections.abortedGenerations
+					.deleteOne({ conversationId: convId })
+					.catch((err) => logger.warn(err, "Failed to consume stop marker"));
+			}
 
 			// used to detect if cancel() is called bc of interrupt or just because the connection closes
 			doneStreaming = true;

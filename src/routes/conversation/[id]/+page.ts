@@ -2,20 +2,9 @@ import { useAPIClient, handleResponse } from "$lib/APIClient";
 import { UrlDependency } from "$lib/types/UrlDependency";
 import { redirect } from "@sveltejs/kit";
 import { base } from "$app/paths";
+import { browser } from "$app/environment";
 import type { PageLoad } from "./$types";
-import type { Message } from "$lib/types/Message";
-
-interface ConversationData {
-	messages: Message[];
-	title: string;
-	model: string;
-	preprompt?: string;
-	rootMessageId?: string;
-	id: string;
-	updatedAt: Date;
-	modelId: string;
-	shared: boolean;
-}
+import { takePendingConversation, type ConversationData } from "$lib/utils/pendingConversation";
 
 export const load: PageLoad = async ({ params, depends, fetch, url, parent }) => {
 	depends(UrlDependency.Conversation);
@@ -48,11 +37,24 @@ export const load: PageLoad = async ({ params, depends, fetch, url, parent }) =>
 		}
 	}
 
+	const fromShare = url.searchParams.get("fromShare") ?? undefined;
+
+	// A conversation created by this tab hands its payload over via a one-shot
+	// seed (see pendingConversation.ts), consumed here so the first load after
+	// create skips the network round trip. Every other load, including every
+	// invalidate() re-run, fetches fresh data.
+	if (browser && !fromShare) {
+		const seeded = takePendingConversation(params.id);
+		if (seeded) {
+			return seeded;
+		}
+	}
+
 	// Load conversation (works for both owned and shared conversations)
 	try {
 		return (await client
 			.conversations({ id: params.id })
-			.get({ query: { fromShare: url.searchParams.get("fromShare") ?? undefined } })
+			.get({ query: { fromShare } })
 			.then(handleResponse)) as ConversationData;
 	} catch {
 		redirect(302, `${base}/`);

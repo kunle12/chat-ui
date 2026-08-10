@@ -2,6 +2,7 @@ import { GridFSBucket, MongoClient, ReadPreference } from "mongodb";
 import type { Conversation } from "$lib/types/Conversation";
 import type { SharedConversation } from "$lib/types/SharedConversation";
 import type { AbortedGeneration } from "$lib/types/AbortedGeneration";
+import type { Generation, GenerationEvent } from "$lib/types/Generation";
 import type { Settings } from "$lib/types/Settings";
 import type { User } from "$lib/types/User";
 import type { MessageEvent } from "$lib/types/MessageEvent";
@@ -11,7 +12,6 @@ import type { Report } from "$lib/types/Report";
 import type { ConversationStats } from "$lib/types/ConversationStats";
 import type { MigrationResult } from "$lib/types/MigrationResult";
 import type { Semaphore } from "$lib/types/Semaphore";
-import type { AssistantStats } from "$lib/types/AssistantStats";
 import { MongoMemoryServer } from "mongodb-memory-server";
 import { logger } from "$lib/server/logger";
 import { building } from "$app/environment";
@@ -76,12 +76,17 @@ export class Database {
 			process.exit(1);
 		}
 
-		// Disconnect DB on exit
-		onExit(async () => {
-			logger.info("Closing database connection");
-			await this.client?.close(true);
-			await this.mongoServer?.stop();
-		});
+		// Disconnect DB on exit. Registered `last` so other exit handlers (e.g. the
+		// reaper finalizing in-flight generations) finish their writes before the
+		// client is force-closed.
+		onExit(
+			async () => {
+				logger.info("Closing database connection");
+				await this.client?.close(true);
+				await this.mongoServer?.stop();
+			},
+			{ last: true }
+		);
 	}
 
 	public static async getInstance(): Promise<Database> {
@@ -123,6 +128,8 @@ export class Database {
 		const sessions = db.collection<Session>("sessions");
 		const messageEvents = db.collection<MessageEvent>("messageEvents");
 		const abortedGenerations = db.collection<AbortedGeneration>("abortedGenerations");
+		const generations = db.collection<Generation>("generations");
+		const generationEvents = db.collection<GenerationEvent>("generationEvents");
 		const semaphores = db.collection<Semaphore>("semaphores");
 		const tokenCaches = db.collection<TokenCache>("tokens");
 		const configCollection = db.collection<ConfigKey>("config");
@@ -135,9 +142,6 @@ export class Database {
 		const assistants = db.collection<Assistant>("assistants", {
 			readPreference: secondaryPreferred,
 		});
-		const assistantStats = db.collection<AssistantStats>("assistants.stats", {
-			readPreference: secondaryPreferred,
-		});
 		const conversationStats = db.collection<ConversationStats>(CONVERSATION_STATS_COLLECTION, {
 			readPreference: secondaryPreferred,
 		});
@@ -147,15 +151,15 @@ export class Database {
 		const tools = db.collection("tools", {
 			readPreference: secondaryPreferred,
 		});
-
 		return {
 			conversations,
 			conversationStats,
 			assistants,
-			assistantStats,
 			reports,
 			sharedConversations,
 			abortedGenerations,
+			generations,
+			generationEvents,
 			settings,
 			users,
 			sessions,
@@ -178,10 +182,11 @@ export class Database {
 			conversations,
 			conversationStats,
 			assistants,
-			assistantStats,
 			reports,
 			sharedConversations,
 			abortedGenerations,
+			generations,
+			generationEvents,
 			settings,
 			users,
 			sessions,
@@ -261,6 +266,53 @@ export class Database {
 			.catch((e) =>
 				logger.error(e, "Error creating index for abortedGenerations by conversationId")
 			);
+		generations
+			.createIndex({ generationId: 1 }, { unique: true })
+			.catch((e) => logger.error(e, "Error creating index for generations by generationId"));
+		generations
+			.createIndex({ conversationId: 1, startedAt: -1 })
+			.catch((e) =>
+				logger.error(e, "Error creating index for generations by conversationId and startedAt")
+			);
+		generations
+			.createIndex(
+				{ userId: 1, updatedAt: -1 },
+				{ partialFilterExpression: { userId: { $exists: true } } }
+			)
+			.catch((e) => logger.error(e, "Error creating index for generations by userId"));
+		generations
+			.createIndex(
+				{ sessionId: 1, updatedAt: -1 },
+				{ partialFilterExpression: { sessionId: { $exists: true } } }
+			)
+			.catch((e) => logger.error(e, "Error creating index for generations by sessionId"));
+		// Serves the reaper's query: still-running runs ordered by heartbeat age.
+		generations
+			.createIndex({ status: 1, lastHeartbeatAt: 1 })
+			.catch((e) =>
+				logger.error(e, "Error creating index for generations by status and lastHeartbeatAt")
+			);
+		generations
+			.createIndex(
+				{ endedAt: 1 },
+				{
+					expireAfterSeconds: 7 * 24 * 60 * 60,
+					partialFilterExpression: { endedAt: { $exists: true } },
+				}
+			)
+			.catch((e) => logger.error(e, "Error creating TTL index for generations by endedAt"));
+
+		// Unique so a retried insert is idempotent, and compound so it is also the
+		// exact index the replay/tail range scan uses.
+		generationEvents
+			.createIndex({ generationId: 1, seq: 1 }, { unique: true })
+			.catch((e) =>
+				logger.error(e, "Error creating index for generationEvents by generationId and seq")
+			);
+		generationEvents
+			.createIndex({ createdAt: 1 }, { expireAfterSeconds: 24 * 60 * 60 })
+			.catch((e) => logger.error(e, "Error creating TTL index for generationEvents by createdAt"));
+
 		sharedConversations.createIndex({ hash: 1 }, { unique: true }).catch((e) => logger.error(e));
 		settings
 			.createIndex({ sessionId: 1 }, { unique: true, sparse: true })
@@ -319,15 +371,6 @@ export class Database {
 			.catch((e) =>
 				logger.error(e, "Error creating index for assistants by last24HoursUseCount and useCount")
 			);
-		assistantStats
-			// Order of keys is important for the queries
-			.createIndex({ "date.span": 1, "date.at": 1, assistantId: 1 }, { unique: true })
-			.catch((e) =>
-				logger.error(
-					e,
-					"Error creating index for assistantStats by date.span and date.at and assistantId"
-				)
-			);
 		reports
 			.createIndex({ assistantId: 1 })
 			.catch((e) => logger.error(e, "Error creating index for reports by assistantId"));
@@ -348,8 +391,6 @@ export class Database {
 		tokenCaches
 			.createIndex({ tokenHash: 1 })
 			.catch((e) => logger.error(e, "Error creating index for tokenCaches by tokenHash"));
-		// Tools removed: skipping tools indexes
-
 		conversations
 			.createIndex({
 				"messages.from": 1,
