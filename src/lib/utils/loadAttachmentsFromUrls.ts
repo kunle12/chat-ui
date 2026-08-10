@@ -64,6 +64,35 @@ function extractFilename(url: string, contentDisposition?: string | null): strin
 }
 
 /**
+ * Load a single remote file via the server-side proxy (SSRF-safe, 10MB cap).
+ * Returns null when the fetch fails or the response isn't usable.
+ */
+export async function fetchUrlAsFile(url: string): Promise<File | null> {
+	try {
+		// Fetch via our proxy endpoint to bypass CORS
+		const proxyUrl = `${base}/api/fetch-url?${new URLSearchParams({ url })}`;
+		const response = await fetch(proxyUrl);
+
+		if (!response.ok) {
+			console.error(`Failed to fetch ${url}:`, await response.text());
+			return null;
+		}
+
+		const forwardedType = response.headers.get("x-forwarded-content-type");
+		const blob = await response.blob();
+		const mimeType = pickSafeMime(forwardedType, blob.type, url);
+		const contentDisposition = response.headers.get("content-disposition");
+		const filename = extractFilename(url, contentDisposition);
+
+		// Create File object
+		return new File([blob], filename, { type: mimeType });
+	} catch (err) {
+		console.error(`Error loading attachment from ${url}:`, err);
+		return null;
+	}
+}
+
+/**
  * Load files from remote URLs via server-side proxy
  */
 export async function loadAttachmentsFromUrls(
@@ -80,33 +109,11 @@ export async function loadAttachmentsFromUrls(
 
 	await Promise.all(
 		urls.map(async (url) => {
-			try {
-				// Fetch via our proxy endpoint to bypass CORS
-				const proxyUrl = `${base}/api/fetch-url?${new URLSearchParams({ url })}`;
-				const response = await fetch(proxyUrl);
-
-				if (!response.ok) {
-					const errorText = await response.text();
-					errors.push(`Failed to fetch ${url}: ${errorText}`);
-					return;
-				}
-
-				const forwardedType = response.headers.get("x-forwarded-content-type");
-				const blob = await response.blob();
-				const mimeType = pickSafeMime(forwardedType, blob.type, url);
-				const contentDisposition = response.headers.get("content-disposition");
-				const filename = extractFilename(url, contentDisposition);
-
-				// Create File object
-				const file = new File([blob], filename, {
-					type: mimeType,
-				});
-
+			const file = await fetchUrlAsFile(url);
+			if (file) {
 				files.push(file);
-			} catch (err) {
-				const message = err instanceof Error ? err.message : "Unknown error";
-				errors.push(`Failed to load ${url}: ${message}`);
-				console.error(`Error loading attachment from ${url}:`, err);
+			} else {
+				errors.push(`Failed to load ${url}`);
 			}
 		})
 	);

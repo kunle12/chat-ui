@@ -50,6 +50,7 @@
 	import { usePublicConfig } from "$lib/utils/PublicConfig.svelte";
 	import { pendingComposerPayload } from "$lib/stores/pendingComposerPayload";
 	import { mimeMatchesAllowlist } from "$lib/utils/mimeMatch";
+	import { fetchUrlAsFile } from "$lib/utils/loadAttachmentsFromUrls";
 	import LucideHammer from "~icons/lucide/hammer";
 	import LucideSparkles from "~icons/lucide/sparkles";
 
@@ -178,7 +179,39 @@
 		}
 	};
 
-	const onPaste = (e: ClipboardEvent) => {
+	const MAX_PASTED_FILE_SIZE = 10 * 1024 * 1024;
+
+	// Extract image URLs from a pasted HTML/plain-text payload. Used only when
+	// the clipboard carried no file data (e.g. a webpage that only embeds an
+	// <img> or a bare image link). data: URLs are skipped (they carry no size).
+	function extractImageUrls(text: string, html: string): string[] {
+		const urls: string[] = [];
+		if (html) {
+			const imgRe = /<img\b[^>]*?\bsrc\s*=\s*["']([^"']+)["']/gi;
+			let match: RegExpExecArray | null;
+			while ((match = imgRe.exec(html)) !== null) {
+				const src = match[1];
+				if (src.startsWith("data:")) {
+					continue;
+				}
+				if (src.startsWith("http://") || src.startsWith("https://")) {
+					urls.push(src);
+				}
+			}
+		}
+		if (urls.length === 0 && text) {
+			const trimmed = text.trim();
+			if (
+				/^https?:\/\/\S+$/i.test(trimmed) &&
+				/\.(png|jpe?g|gif|webp|bmp|avif)(\?.*)?$/i.test(trimmed)
+			) {
+				urls.push(trimmed);
+			}
+		}
+		return urls;
+	}
+
+	const onPaste = async (e: ClipboardEvent) => {
 		const textContent = e.clipboardData?.getData("text");
 
 		if (!$settings.directPaste && textContent && textContent.length >= 3984) {
@@ -198,17 +231,67 @@
 			return;
 		}
 
-		// paste of files
+		// Collect file-based pastes from both `files` and `items`. `getAsFile()`
+		// on an image item is what makes pasting a *copied image* (screenshot,
+		// browser "copy image") work — those never appear in `clipboardData.files`.
+		const itemFiles: File[] = [];
+		for (const item of Array.from(e.clipboardData.items ?? [])) {
+			if (item.kind === "file" || item.type.startsWith("image/")) {
+				const file = item.getAsFile();
+				if (file) {
+					itemFiles.push(file);
+				}
+			}
+		}
 		const pastedFiles = Array.from(e.clipboardData.files);
-		if (pastedFiles.length !== 0) {
+		const combined = [...pastedFiles, ...itemFiles];
+
+		if (combined.length !== 0) {
 			e.preventDefault();
 
-			// filter based on activeMimeTypes, including wildcards
-			const filteredFiles = pastedFiles.filter((file) =>
-				mimeMatchesAllowlist(file.type, activeMimeTypes)
-			);
+			// De-duplicate (files and items often carry the same payload) and
+			// validate exactly like drag & drop: allowlist + 10MB cap.
+			const seen = new Set<string>();
+			const accepted = combined.filter((file) => {
+				const key = `${file.name}:${file.size}:${file.lastModified}`;
+				if (seen.has(key)) {
+					return false;
+				}
+				seen.add(key);
+				if (file.size > MAX_PASTED_FILE_SIZE) {
+					return false;
+				}
+				return mimeMatchesAllowlist(file.type, activeMimeTypes);
+			});
 
-			files = [...files, ...filteredFiles];
+			if (accepted.length > 0) {
+				files = [...files, ...accepted];
+			}
+			return;
+		}
+
+		// No file data on the clipboard: fall back to extracting image URLs from
+		// the HTML/plain-text payload and fetching them as image files.
+		const html = e.clipboardData.getData("text/html");
+		const urls = extractImageUrls(textContent ?? "", html);
+		if (urls.length > 0) {
+			e.preventDefault();
+			const fetched: File[] = [];
+			await Promise.all(
+				urls.map(async (url) => {
+					const file = await fetchUrlAsFile(url);
+					if (
+						file &&
+						file.size <= MAX_PASTED_FILE_SIZE &&
+						mimeMatchesAllowlist(file.type, activeMimeTypes)
+					) {
+						fetched.push(file);
+					}
+				})
+			);
+			if (fetched.length > 0) {
+				files = [...files, ...fetched];
+			}
 		}
 	};
 
