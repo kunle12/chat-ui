@@ -101,7 +101,7 @@ export async function endpointOai(
 				"[openai] BAD response content-length"
 			);
 		}
-		logger.info(
+		logger.error(
 			{
 				url: String(url),
 				reqContentLength: reqCl,
