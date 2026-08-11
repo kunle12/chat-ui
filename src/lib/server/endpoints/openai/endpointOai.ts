@@ -78,17 +78,39 @@ export async function endpointOai(
 
 	// Custom fetch wrapper to capture response headers for router metadata
 	const customFetch = async (url: RequestInfo, init?: RequestInit): Promise<Response> => {
-		const contentLength = init?.headers
-			? (init.headers as Record<string, string | string[]>)[`content-length`]
+		const reqHeaders = init?.headers
+			? (init.headers as Record<string, string | string[]>)
 			: undefined;
-		if (typeof contentLength !== "string" || !/^\d+$/.test(contentLength ?? "")) {
-			console.error("[openai] bad content-length on outgoing request", {
+		const reqCl = reqHeaders?.[`content-length`];
+		const reqBodyType = init?.body ? (init.body as object).constructor?.name : "none";
+		if (typeof reqCl !== "string" || !/^\d+$/.test(reqCl ?? "")) {
+			console.error("[openai] BAD outgoing content-length", {
 				url: String(url),
-				value: contentLength,
-				typeof: typeof contentLength,
+				value: reqCl,
+				typeof: typeof reqCl,
+				bodyType: reqBodyType,
 			});
 		}
 		const response = await fetch(url, init);
+
+		// Log response content-length (also a candidate for the undici rejection)
+		const respCl = response.headers.get("content-length");
+		const respTe = response.headers.get("transfer-encoding");
+		if (respCl !== null && (typeof respCl !== "string" || !/^\d+$/.test(respCl))) {
+			console.error("[openai] BAD response content-length", {
+				url: String(url),
+				value: respCl,
+				typeof: typeof respCl,
+				transferEncoding: respTe,
+			});
+		}
+		console.error("[openai] debug request", {
+			url: String(url),
+			reqContentLength: reqCl,
+			reqBodyType,
+			respContentLength: respCl,
+			respTransferEncoding: respTe,
+		});
 
 		// Capture router headers if present (fallback for non-streaming)
 		const routeHeader = response.headers.get("X-Router-Route");
