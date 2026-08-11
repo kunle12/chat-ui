@@ -88,9 +88,23 @@ export async function endpointOai(
 			typeof init?.body === "string" ? Buffer.byteLength(init.body, "utf8") : null;
 		const reqMethod = init?.method ?? "GET";
 
+		// Strip a pre-set Content-Length so the fetch layer computes it from the
+		// actual body. Newer undici (Node 24) rejects Content-Length values that
+		// don't match the body, and a stale/wrong value from the SDK or a proxy
+		// intermittently trips that check (`invalid content-length header`).
+		let fetchInit: RequestInit | undefined;
+		if (init && init.headers && reqCl !== undefined) {
+			const cleanHeaders = { ...init.headers } as Record<string, string | string[]>;
+			delete cleanHeaders["content-length"];
+			delete cleanHeaders["Content-Length"];
+			fetchInit = { ...init, headers: cleanHeaders as unknown as HeadersInit };
+		} else {
+			fetchInit = init;
+		}
+
 		let response: Response;
 		try {
-			response = await fetch(url, init);
+			response = await fetch(url, fetchInit);
 		} catch (error) {
 			const cause = (error as { cause?: { name?: string; message?: string } }).cause;
 			logger.error(
