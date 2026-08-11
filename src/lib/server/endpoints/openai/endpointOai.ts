@@ -11,7 +11,6 @@ import type {
 } from "openai/resources/chat/completions";
 import { buildPrompt } from "$lib/buildPrompt";
 import { config } from "$lib/server/config";
-import { logger } from "$lib/server/logger";
 import type { Endpoint } from "../endpoints";
 import type OpenAI from "openai";
 import { createImageProcessorOptionsValidator, makeImageProcessor } from "../images";
@@ -79,69 +78,28 @@ export async function endpointOai(
 
 	// Custom fetch wrapper to capture response headers for router metadata
 	const customFetch = async (url: RequestInfo, init?: RequestInit): Promise<Response> => {
-		const reqHeaders = init?.headers
-			? (init.headers as Record<string, string | string[]>)
-			: undefined;
-		const reqCl = reqHeaders?.[`content-length`];
-		const reqBodyType = init?.body ? (init.body as object).constructor?.name : "none";
-		const reqBodyByteLen =
-			typeof init?.body === "string" ? Buffer.byteLength(init.body, "utf8") : null;
-		const reqMethod = init?.method ?? "GET";
-
 		// Strip a pre-set Content-Length so the fetch layer computes it from the
 		// actual body. Newer undici (Node 24) rejects Content-Length values that
 		// don't match the body, and a stale/wrong value from the SDK or a proxy
 		// intermittently trips that check (`invalid content-length header`).
 		let fetchInit: RequestInit | undefined;
-		if (init && init.headers && reqCl !== undefined) {
+		if (init?.headers) {
 			const cleanHeaders = { ...init.headers } as Record<string, string | string[]>;
-			delete cleanHeaders["content-length"];
-			delete cleanHeaders["Content-Length"];
-			fetchInit = { ...init, headers: cleanHeaders as unknown as HeadersInit };
+			if (
+				cleanHeaders["content-length"] !== undefined ||
+				cleanHeaders["Content-Length"] !== undefined
+			) {
+				delete cleanHeaders["content-length"];
+				delete cleanHeaders["Content-Length"];
+				fetchInit = { ...init, headers: cleanHeaders as unknown as HeadersInit };
+			} else {
+				fetchInit = init;
+			}
 		} else {
 			fetchInit = init;
 		}
 
-		let response: Response;
-		try {
-			response = await fetch(url, fetchInit);
-		} catch (error) {
-			const cause = (error as { cause?: { name?: string; message?: string } }).cause;
-			logger.error(
-				{
-					url: String(url),
-					method: reqMethod,
-					reqContentLength: reqCl,
-					reqBodyType,
-					reqBodyByteLen,
-					contentLengthMatchesBody: reqBodyByteLen !== null && reqCl === String(reqBodyByteLen),
-					headers: reqHeaders,
-					errorName: (error as Error).name,
-					errorMessage: (error as Error).message,
-					causeName: cause?.name,
-					causeMessage: cause?.message,
-				},
-				"[openai] fetch failed (content-length diagnostic)"
-			);
-			throw error;
-		}
-
-		// Log response content-length (also a candidate for the undici rejection)
-		const respCl = response.headers.get("content-length");
-		const respTe = response.headers.get("transfer-encoding");
-		logger.error(
-			{
-				url: String(url),
-				method: reqMethod,
-				reqContentLength: reqCl,
-				reqBodyType,
-				reqBodyByteLen,
-				contentLengthMatchesBody: reqBodyByteLen !== null && reqCl === String(reqBodyByteLen),
-				respContentLength: respCl,
-				respTransferEncoding: respTe,
-			},
-			"[openai] debug request"
-		);
+		const response = await fetch(url, fetchInit);
 
 		// Capture router headers if present (fallback for non-streaming)
 		const routeHeader = response.headers.get("X-Router-Route");
