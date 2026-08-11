@@ -78,6 +78,16 @@ export async function endpointOai(
 
 	// Custom fetch wrapper to capture response headers for router metadata
 	const customFetch = async (url: RequestInfo, init?: RequestInit): Promise<Response> => {
+		const contentLength = init?.headers
+			? (init.headers as Record<string, string | string[]>)[`content-length`]
+			: undefined;
+		if (typeof contentLength !== "string" || !/^\d+$/.test(contentLength ?? "")) {
+			console.error("[openai] bad content-length on outgoing request", {
+				url: String(url),
+				value: contentLength,
+				typeof: typeof contentLength,
+			});
+		}
 		const response = await fetch(url, init);
 
 		// Capture router headers if present (fallback for non-streaming)
