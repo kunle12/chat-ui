@@ -84,6 +84,9 @@ export async function endpointOai(
 			: undefined;
 		const reqCl = reqHeaders?.[`content-length`];
 		const reqBodyType = init?.body ? (init.body as object).constructor?.name : "none";
+		const reqBodyByteLen =
+			typeof init?.body === "string" ? Buffer.byteLength(init.body, "utf8") : null;
+		const reqMethod = init?.method ?? "GET";
 
 		let response: Response;
 		try {
@@ -93,8 +96,12 @@ export async function endpointOai(
 			logger.error(
 				{
 					url: String(url),
+					method: reqMethod,
 					reqContentLength: reqCl,
 					reqBodyType,
+					reqBodyByteLen,
+					contentLengthMatchesBody: reqBodyByteLen !== null && reqCl === String(reqBodyByteLen),
+					headers: reqHeaders,
 					errorName: (error as Error).name,
 					errorMessage: (error as Error).message,
 					causeName: cause?.name,
@@ -111,8 +118,11 @@ export async function endpointOai(
 		logger.error(
 			{
 				url: String(url),
+				method: reqMethod,
 				reqContentLength: reqCl,
 				reqBodyType,
+				reqBodyByteLen,
+				contentLengthMatchesBody: reqBodyByteLen !== null && reqCl === String(reqBodyByteLen),
 				respContentLength: respCl,
 				respTransferEncoding: respTe,
 			},
