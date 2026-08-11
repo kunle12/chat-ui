@@ -11,6 +11,7 @@ import type {
 } from "openai/resources/chat/completions";
 import { buildPrompt } from "$lib/buildPrompt";
 import { config } from "$lib/server/config";
+import { logger } from "$lib/server/logger";
 import type { Endpoint } from "../endpoints";
 import type OpenAI from "openai";
 import { createImageProcessorOptionsValidator, makeImageProcessor } from "../images";
@@ -84,12 +85,10 @@ export async function endpointOai(
 		const reqCl = reqHeaders?.[`content-length`];
 		const reqBodyType = init?.body ? (init.body as object).constructor?.name : "none";
 		if (typeof reqCl !== "string" || !/^\d+$/.test(reqCl ?? "")) {
-			console.error("[openai] BAD outgoing content-length", {
-				url: String(url),
-				value: reqCl,
-				typeof: typeof reqCl,
-				bodyType: reqBodyType,
-			});
+			logger.error(
+				{ url: String(url), value: reqCl, typeof: typeof reqCl, bodyType: reqBodyType },
+				"[openai] BAD outgoing content-length"
+			);
 		}
 		const response = await fetch(url, init);
 
@@ -97,20 +96,21 @@ export async function endpointOai(
 		const respCl = response.headers.get("content-length");
 		const respTe = response.headers.get("transfer-encoding");
 		if (respCl !== null && (typeof respCl !== "string" || !/^\d+$/.test(respCl))) {
-			console.error("[openai] BAD response content-length", {
-				url: String(url),
-				value: respCl,
-				typeof: typeof respCl,
-				transferEncoding: respTe,
-			});
+			logger.error(
+				{ url: String(url), value: respCl, typeof: typeof respCl, transferEncoding: respTe },
+				"[openai] BAD response content-length"
+			);
 		}
-		console.error("[openai] debug request", {
-			url: String(url),
-			reqContentLength: reqCl,
-			reqBodyType,
-			respContentLength: respCl,
-			respTransferEncoding: respTe,
-		});
+		logger.info(
+			{
+				url: String(url),
+				reqContentLength: reqCl,
+				reqBodyType,
+				respContentLength: respCl,
+				respTransferEncoding: respTe,
+			},
+			"[openai] debug request"
+		);
 
 		// Capture router headers if present (fallback for non-streaming)
 		const routeHeader = response.headers.get("X-Router-Route");
