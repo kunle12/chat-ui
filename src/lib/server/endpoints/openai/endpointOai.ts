@@ -84,23 +84,30 @@ export async function endpointOai(
 			: undefined;
 		const reqCl = reqHeaders?.[`content-length`];
 		const reqBodyType = init?.body ? (init.body as object).constructor?.name : "none";
-		if (typeof reqCl !== "string" || !/^\d+$/.test(reqCl ?? "")) {
+
+		let response: Response;
+		try {
+			response = await fetch(url, init);
+		} catch (error) {
+			const cause = (error as { cause?: { name?: string; message?: string } }).cause;
 			logger.error(
-				{ url: String(url), value: reqCl, typeof: typeof reqCl, bodyType: reqBodyType },
-				"[openai] BAD outgoing content-length"
+				{
+					url: String(url),
+					reqContentLength: reqCl,
+					reqBodyType,
+					errorName: (error as Error).name,
+					errorMessage: (error as Error).message,
+					causeName: cause?.name,
+					causeMessage: cause?.message,
+				},
+				"[openai] fetch failed (content-length diagnostic)"
 			);
+			throw error;
 		}
-		const response = await fetch(url, init);
 
 		// Log response content-length (also a candidate for the undici rejection)
 		const respCl = response.headers.get("content-length");
 		const respTe = response.headers.get("transfer-encoding");
-		if (respCl !== null && (typeof respCl !== "string" || !/^\d+$/.test(respCl))) {
-			logger.error(
-				{ url: String(url), value: respCl, typeof: typeof respCl, transferEncoding: respTe },
-				"[openai] BAD response content-length"
-			);
-		}
 		logger.error(
 			{
 				url: String(url),
