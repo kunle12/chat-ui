@@ -181,17 +181,23 @@
 
 	const MAX_PASTED_FILE_SIZE = 10 * 1024 * 1024;
 
-	// Extract image URLs from a pasted HTML/plain-text payload. Used only when
-	// the clipboard carried no file data (e.g. a webpage that only embeds an
-	// <img> or a bare image link). data: URLs are skipped (they carry no size).
-	function extractImageUrls(text: string, html: string): string[] {
+	// Extract image sources from a pasted HTML/plain-text payload. Returns
+	// remote URLs (fetched via the proxy) and data: URIs decoded directly into
+	// Files. data: URIs are what Windows screenshots carry, so they must be
+	// handled rather than skipped.
+	function extractImageSources(text: string, html: string): { urls: string[]; dataFiles: File[] } {
 		const urls: string[] = [];
+		const dataFiles: File[] = [];
 		if (html) {
 			const imgRe = /<img\b[^>]*?\bsrc\s*=\s*["']([^"']+)["']/gi;
 			let match: RegExpExecArray | null;
 			while ((match = imgRe.exec(html)) !== null) {
 				const src = match[1];
 				if (src.startsWith("data:")) {
+					const file = dataUriToFile(src);
+					if (file) {
+						dataFiles.push(file);
+					}
 					continue;
 				}
 				if (src.startsWith("http://") || src.startsWith("https://")) {
@@ -199,7 +205,7 @@
 				}
 			}
 		}
-		if (urls.length === 0 && text) {
+		if (urls.length === 0 && dataFiles.length === 0 && text) {
 			const trimmed = text.trim();
 			if (
 				/^https?:\/\/\S+$/i.test(trimmed) &&
@@ -208,7 +214,61 @@
 				urls.push(trimmed);
 			}
 		}
-		return urls;
+		return { urls, dataFiles };
+	}
+
+	// Decode a data: URI into a File (raster images only). Returns null when the
+	// URI is unparseable, not a supported image, or the payload is malformed.
+	// Restricted to raster formats to avoid inline SVG (an XSS vector) and to
+	// stay consistent with the URL regex above.
+	function dataUriToFile(dataUri: string): File | null {
+		const match = dataUri.match(/^data:([^;,]+)(;[^,]*)?,(.*)$/i);
+		if (!match) return null;
+		const mime = match[1].toLowerCase();
+		if (!/^image\/(png|jpe?g|gif|webp|bmp|avif)$/.test(mime)) return null;
+		const meta = match[2] ?? "";
+		const payload = match[3];
+		try {
+			let bytes: Uint8Array<ArrayBuffer>;
+			if (/;base64/i.test(meta)) {
+				const binary = atob(payload);
+				const buf = new ArrayBuffer(binary.length);
+				bytes = new Uint8Array(buf);
+				for (let i = 0; i < binary.length; i++) {
+					bytes[i] = binary.charCodeAt(i);
+				}
+			} else {
+				bytes = new TextEncoder().encode(decodeURIComponent(payload));
+			}
+			if (bytes.length === 0) return null;
+			const ext = (mime.split("/")[1] ?? "png").replace(/[^a-z0-9]/gi, "") || "png";
+			return new File([bytes], `pasted-image.${ext}`, { type: mime });
+		} catch {
+			return null;
+		}
+	}
+
+	// Read image blobs from the async clipboard API. Fallback for cases where
+	// the paste event exposes no usable file data — e.g. Windows CF_DIB
+	// screenshots where `getAsFile()` returns null, or Firefox on Windows
+	// where `clipboardData.items` is empty.
+	async function readClipboardImages(): Promise<File[]> {
+		if (typeof navigator === "undefined" || !navigator.clipboard?.read) return [];
+		if (!window.isSecureContext) return [];
+		try {
+			const items = await navigator.clipboard.read();
+			const out: File[] = [];
+			for (const item of items) {
+				const mime = item.types.find((t) => t.startsWith("image/"));
+				if (!mime) continue;
+				const blob = await item.getType(mime);
+				const ext = (mime.split("/")[1] ?? "png").replace(/[^a-z0-9]/gi, "") || "png";
+				out.push(new File([blob], `pasted-image.${ext}`, { type: mime }));
+			}
+			return out;
+		} catch {
+			return [];
+		}
 	}
 
 	const onPaste = async (e: ClipboardEvent) => {
@@ -234,17 +294,23 @@
 		// Collect file-based pastes from both `files` and `items`. `getAsFile()`
 		// on an image item is what makes pasting a *copied image* (screenshot,
 		// browser "copy image") work — those never appear in `clipboardData.files`.
-		const itemFiles: File[] = [];
+		// On Windows, `getAsFile()` can return null for bitmap-only pastes
+		// (CF_DIB screenshots), so track the item MIME type and fall back to the
+		// async clipboard API when the file can't be materialized.
+		const itemFiles: Array<{ file: File; type: string }> = [];
+		let needClipboardRead = false;
 		for (const item of Array.from(e.clipboardData.items ?? [])) {
 			if (item.kind === "file" || item.type.startsWith("image/")) {
 				const file = item.getAsFile();
 				if (file) {
-					itemFiles.push(file);
+					itemFiles.push({ file, type: item.type || file.type });
+				} else if (item.type.startsWith("image/")) {
+					needClipboardRead = true;
 				}
 			}
 		}
 		const pastedFiles = Array.from(e.clipboardData.files);
-		const combined = [...pastedFiles, ...itemFiles];
+		const combined = [...pastedFiles.map((f) => ({ file: f, type: f.type })), ...itemFiles];
 
 		if (combined.length !== 0) {
 			e.preventDefault();
@@ -252,7 +318,58 @@
 			// De-duplicate (files and items often carry the same payload) and
 			// validate exactly like drag & drop: allowlist + 10MB cap.
 			const seen = new Set<string>();
-			const accepted = combined.filter((file) => {
+			const accepted = combined.filter(({ file, type }) => {
+				const key = `${file.name}:${file.size}:${file.lastModified}`;
+				if (seen.has(key)) {
+					return false;
+				}
+				seen.add(key);
+				if (file.size > MAX_PASTED_FILE_SIZE) {
+					return false;
+				}
+				return mimeMatchesAllowlist(type, activeMimeTypes);
+			});
+
+			if (accepted.length > 0) {
+				files = [...files, ...accepted.map(({ file }) => file)];
+			}
+			return;
+		}
+
+		// Only attempt image recovery when the current model accepts images.
+		const imagesAllowed = activeMimeTypes.some((m) => m === "image/*" || m.startsWith("image/"));
+		if (!imagesAllowed) return;
+
+		// No file data on the clipboard: recover images from the HTML payload
+		// (including data: URIs, which Windows screenshots use) and, when
+		// `getAsFile()` returned null, from the async clipboard API.
+		const html = e.clipboardData.getData("text/html");
+		const { urls, dataFiles } = extractImageSources(textContent ?? "", html);
+
+		// Only prevent the default paste when we already have a concrete
+		// candidate (data: URI or remote URL). For the async clipboard-read
+		// fallback we leave the default action alone so a failed read never
+		// swallows any text the clipboard also carried.
+		if (dataFiles.length > 0 || urls.length > 0) {
+			e.preventDefault();
+		}
+
+		const candidates: File[] = [...dataFiles];
+		if (needClipboardRead && dataFiles.length === 0 && urls.length === 0) {
+			candidates.push(...(await readClipboardImages()));
+		}
+		await Promise.all(
+			urls.map(async (url) => {
+				const file = await fetchUrlAsFile(url);
+				if (file) {
+					candidates.push(file);
+				}
+			})
+		);
+
+		if (candidates.length > 0) {
+			const seen = new Set<string>();
+			const accepted = candidates.filter((file) => {
 				const key = `${file.name}:${file.size}:${file.lastModified}`;
 				if (seen.has(key)) {
 					return false;
@@ -263,34 +380,8 @@
 				}
 				return mimeMatchesAllowlist(file.type, activeMimeTypes);
 			});
-
 			if (accepted.length > 0) {
 				files = [...files, ...accepted];
-			}
-			return;
-		}
-
-		// No file data on the clipboard: fall back to extracting image URLs from
-		// the HTML/plain-text payload and fetching them as image files.
-		const html = e.clipboardData.getData("text/html");
-		const urls = extractImageUrls(textContent ?? "", html);
-		if (urls.length > 0) {
-			e.preventDefault();
-			const fetched: File[] = [];
-			await Promise.all(
-				urls.map(async (url) => {
-					const file = await fetchUrlAsFile(url);
-					if (
-						file &&
-						file.size <= MAX_PASTED_FILE_SIZE &&
-						mimeMatchesAllowlist(file.type, activeMimeTypes)
-					) {
-						fetched.push(file);
-					}
-				})
-			);
-			if (fetched.length > 0) {
-				files = [...files, ...fetched];
 			}
 		}
 	};
