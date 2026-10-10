@@ -1,9 +1,8 @@
 import { createMcpClient } from "./client";
-import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
-import { SSEClientTransport } from "@modelcontextprotocol/sdk/client/sse.js";
+import { StreamableHTTPClientTransport, SSEClientTransport } from "@modelcontextprotocol/client";
 import type { McpServerConfig } from "./httpClient";
 import { logger } from "$lib/server/logger";
-import { mcpFetch } from "$lib/server/urlSafety";
+import { mcpFetchForServer } from "./fetch";
 // use console.* for lightweight diagnostics in production logs
 
 export type OpenAiTool = {
@@ -27,6 +26,8 @@ export interface McpToolMapping {
 	fnName: string;
 	server: string;
 	tool: string;
+	/** The server's unsanitized inputSchema, for checking arguments before dispatch. */
+	inputSchema?: Record<string, unknown>;
 	annotations?: McpToolAnnotations;
 }
 
@@ -39,6 +40,13 @@ type CachedServerTool = {
 	name: string;
 	description?: string;
 	parameters?: Record<string, unknown>;
+	/**
+	 * The server's own inputSchema, before sanitizing. Kept because sanitizing is
+	 * lossy in the direction that matters for validation: it stamps `type:
+	 * "string"` on a property that declared no type, so checking arguments
+	 * against the sanitized copy could refuse a call the server would accept.
+	 */
+	inputSchema?: Record<string, unknown>;
 	annotations?: McpToolAnnotations;
 };
 
@@ -135,7 +143,7 @@ function serverCacheKey(server: McpServerConfig): string {
 	const headers = server.headers
 		? Object.entries(server.headers).sort(([a], [b]) => a.localeCompare(b))
 		: [];
-	return JSON.stringify([server.url, headers]);
+	return JSON.stringify([server.url, server.oauthConnectionId, headers]);
 }
 
 function evictExpired(now: number) {
@@ -186,17 +194,18 @@ async function listServerTools(
 ): Promise<ListedTool[]> {
 	const url = new URL(server.url);
 	const client = createMcpClient();
+	const fetch = mcpFetchForServer(server);
 	try {
 		try {
 			const transport = new StreamableHTTPClientTransport(url, {
 				requestInit: { headers: server.headers, signal: opts.signal },
-				fetch: mcpFetch,
+				fetch,
 			});
 			await client.connect(transport);
 		} catch {
 			const transport = new SSEClientTransport(url, {
 				requestInit: { headers: server.headers, signal: opts.signal },
-				fetch: mcpFetch,
+				fetch,
 			});
 			await client.connect(transport);
 		}
@@ -241,6 +250,7 @@ async function fetchServerTools(
 			parameters: isPlainObject(tool.inputSchema)
 				? sanitizeJsonSchema(tool.inputSchema)
 				: undefined,
+			inputSchema: isPlainObject(tool.inputSchema) ? tool.inputSchema : undefined,
 			annotations: readAnnotations(tool.annotations),
 		});
 	}
@@ -331,6 +341,7 @@ export async function getOpenAiToolsForMcp(
 				fnName: plainName,
 				server: server.name,
 				tool: tool.name,
+				...(tool.inputSchema ? { inputSchema: tool.inputSchema } : {}),
 				...(tool.annotations ? { annotations: tool.annotations } : {}),
 			};
 		}
