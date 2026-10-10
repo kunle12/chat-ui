@@ -14,13 +14,13 @@ Chat UI is a **SvelteKit-based chat interface for LLMs** that powers [HuggingCha
 
 ## Key Features
 
-| Feature | Description |
-|---------|-------------|
-| Chat UI | Message streaming, file uploads, voice input (Whisper) |
-| MCP | Model Context Protocol integration for tool calling |
-| Omni Router | Smart model routing via Arch-Router |
-| Auth | OpenID Connect (HF, Google, etc.) |
-| Sharing | Public conversation sharing via hash |
+| Feature     | Description                                            |
+| ----------- | ------------------------------------------------------ |
+| Chat UI     | Message streaming, file uploads, voice input (Whisper) |
+| MCP         | Model Context Protocol integration for tool calling    |
+| Omni Router | Smart model routing via Arch-Router                    |
+| Auth        | OpenID Connect (HF, Google, etc.)                      |
+| Sharing     | Public conversation sharing via hash                   |
 
 ## Directory Structure
 
@@ -66,6 +66,7 @@ npm run test     # Run all tests
 ## Environment
 
 Key variables in `.env`:
+
 - `OPENAI_BASE_URL` - API endpoint
 - `OPENAI_API_KEY` - API key
 - `MONGODB_URL` - Optional (falls back to in-memory)
