@@ -12,6 +12,8 @@ const updateAssistantsModels: Migration = {
 		const { assistants } = collections;
 
 		const modelIds = models.map((el) => el.id);
+		// Nothing to migrate when the model list is still empty (upstream down).
+		if (models.length === 0) return true;
 		const defaultModelId = models[0].id;
 
 		// Find all assistants whose modelId is not in modelIds, and update it

@@ -6,6 +6,7 @@
 	import { usePublicConfig } from "$lib/utils/PublicConfig.svelte";
 
 	import ChatWindow from "$lib/components/chat/ChatWindow.svelte";
+	import ModelsUnavailable from "$lib/components/ModelsUnavailable.svelte";
 	import { findCurrentModel } from "$lib/utils/models";
 	import { useSettingsStore } from "$lib/stores/settings";
 	import { mlAssistant } from "$lib/stores/mlAssistant.svelte";
@@ -39,6 +40,10 @@
 			.map((segment) => encodeURIComponent(segment))
 			.join("/")
 	);
+
+	// Undefined while the upstream is down and no models are available; the
+	// render below shows a waiting state instead of a ChatWindow without a model.
+	let currentModel = $derived(findCurrentModel(data.models, data.oldModels, modelId));
 
 	async function createConversation(message: string) {
 		try {
@@ -202,14 +207,18 @@
 	<meta name="twitter:image:alt" content="{modelId} - {publicConfig.PUBLIC_APP_NAME}" />
 </svelte:head>
 
-<ChatWindow
-	onmessage={(message) => createConversation(message)}
-	{loading}
-	currentModel={findCurrentModel(data.models, data.oldModels, modelId)}
-	models={data.models}
-	bind:files
-	bind:draft
-/>
+{#if currentModel}
+	<ChatWindow
+		onmessage={(message) => createConversation(message)}
+		{loading}
+		{currentModel}
+		models={data.models}
+		bind:files
+		bind:draft
+	/>
+{:else}
+	<ModelsUnavailable ready={data.modelsReady} />
+{/if}
 <!-- A first visit also opens the layout's welcome modal. One dialog at a time:
      the request waits in memory until that one is dismissed. -->
 {#if linkRequest && $settings.welcomeModalSeen}

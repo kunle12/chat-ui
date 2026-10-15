@@ -7,6 +7,7 @@
 	const publicConfig = usePublicConfig();
 
 	import ChatWindow from "$lib/components/chat/ChatWindow.svelte";
+	import ModelsUnavailable from "$lib/components/ModelsUnavailable.svelte";
 	import { ERROR_MESSAGES, error } from "$lib/stores/errors";
 	import { storePendingFiles } from "$lib/utils/pendingFiles";
 	import superjson from "superjson";
@@ -14,6 +15,7 @@
 	import { useSettingsStore } from "$lib/stores/settings.js";
 	import { useConversationsStore } from "$lib/stores/conversations.svelte";
 	import { findCurrentModel } from "$lib/utils/models";
+	import type { Model } from "$lib/types/Model";
 	import { onDestroy, onMount, tick, untrack } from "svelte";
 	import { loading } from "$lib/stores/loading.js";
 	import { loadAttachmentsFromUrls } from "$lib/utils/loadAttachmentsFromUrls";
@@ -33,7 +35,56 @@
 
 	const convsStore = useConversationsStore();
 
-	let hasModels = $derived(Boolean(data.models?.length));
+	// Live model list: seeded from the SSR payload and kept fresh by a short poll
+	// of GET /api/v2/models (max-age=5) plus GET /api/v2/models/status. This lets
+	// the page start in the "waiting" state and resume normal behaviour as soon
+	// as the upstream comes up. `modelsReady` distinguishes "server down" from
+	// "server up but no models running".
+	let models = $state<Model[]>(untrack(() => data.models ?? []));
+	let modelsReady = $state<boolean>(untrack(() => data.modelsReady ?? false));
+	let modelsTimer: ReturnType<typeof setInterval> | undefined;
+	// Raw body of the last model list we applied, so an unchanged list is not
+	// re-assigned every tick (a fresh array would churn every `$derived` and
+	// `$effect` that reads `models`, ChatWindow's included).
+	let lastModelsBody: string | undefined;
+
+	async function pollModels() {
+		try {
+			const [modelsRes, statusRes] = await Promise.all([
+				fetch(`${base}/api/v2/models`),
+				fetch(`${base}/api/v2/models/status`),
+			]);
+			if (statusRes.ok) {
+				const status = superjson.parse(await statusRes.text());
+				if (status && typeof status === "object" && "ready" in status) {
+					modelsReady = (status as { ready: boolean }).ready === true;
+				}
+			}
+			if (modelsRes.ok) {
+				const text = await modelsRes.text();
+				if (text !== lastModelsBody) {
+					const body = superjson.parse(text);
+					if (Array.isArray(body)) {
+						models = body as Model[];
+						lastModelsBody = text;
+					}
+				}
+			}
+		} catch {
+			// keep the last known list; the next tick retries
+		}
+	}
+
+	onMount(() => {
+		void pollModels();
+		modelsTimer = setInterval(pollModels, 5000);
+	});
+
+	onDestroy(() => {
+		if (modelsTimer) clearInterval(modelsTimer);
+	});
+
+	let hasModels = $derived(modelsReady && models.length > 0);
 	let files: File[] = $state([]);
 	let draft = $state("");
 	/** A deep link waiting on the user's say-so; see LinkPromptModal. */
@@ -42,6 +93,10 @@
 	const settings = useSettingsStore();
 
 	async function createConversation(message: string) {
+		// The composer is only reachable while models exist, but a poll can empty
+		// the list between render and submit if the upstream goes away — bail
+		// rather than dereference models[0].
+		if (models.length === 0) return;
 		try {
 			$loading = true;
 
@@ -49,13 +104,13 @@
 			// else check if it's an assistant, and use that model
 			// else use the first model
 
-			const validModels = data.models.map((model) => model.id);
+			const validModels = models.map((model) => model.id);
 
 			let model;
 			if (validModels.includes($settings.activeModel)) {
 				model = $settings.activeModel;
 			} else {
-				model = data.models[0].id;
+				model = models[0].id;
 			}
 			// The mode runs on its own fixed set; the server enforces this too.
 			if (mlAssistant.taskStarted && data.mlAssistantModels.length > 0) {
@@ -213,7 +268,7 @@
 		}
 	}
 
-	let currentModel = $derived(findCurrentModel(data.models, data.oldModels, $settings.activeModel));
+	let currentModel = $derived(findCurrentModel(models, data.oldModels, $settings.activeModel));
 </script>
 
 <svelte:head>
@@ -225,7 +280,7 @@
 		onmessage={(message) => createConversation(message)}
 		loading={$loading}
 		{currentModel}
-		models={data.models}
+		{models}
 		bind:files
 		bind:draft
 	/>
@@ -241,11 +296,5 @@
 		/>
 	{/if}
 {:else}
-	<div class="mx-auto my-20 max-w-xl rounded-xl border p-6 text-center dark:border-gray-700">
-		<h2 class="mb-2 text-xl font-semibold">No models available</h2>
-		<p class="text-gray-600 dark:text-gray-300">
-			No chat models are configured. Set `OPENAI_BASE_URL` and ensure the server can reach the
-			endpoint, then reload. If unset, the app defaults to the Hugging Face router.
-		</p>
-	</div>
+	<ModelsUnavailable ready={modelsReady} />
 {/if}

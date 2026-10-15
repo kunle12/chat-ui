@@ -1,5 +1,6 @@
 <script lang="ts">
 	import ChatWindow from "$lib/components/chat/ChatWindow.svelte";
+	import ModelsUnavailable from "$lib/components/ModelsUnavailable.svelte";
 	import { consumePendingFiles } from "$lib/utils/pendingFiles";
 	import { isAborted } from "$lib/stores/isAborted";
 	import { onDestroy, onMount, untrack } from "svelte";
@@ -60,6 +61,9 @@
 	const convsStore = useConversationsStore();
 
 	let convId = $derived(page.params.id ?? "");
+	// Undefined while the upstream is down and no models are available; the
+	// render below shows a waiting state instead of a ChatWindow without a model.
+	let currentModel = $derived(findCurrentModel(data.models, data.oldModels, data.model));
 	let pending = $state(false);
 	/** A resumed call streams into the message that parked, so it needs no placeholder. */
 	let resuming = $state(false);
@@ -918,24 +922,28 @@
 	<SharePreviewTags shareId={sharePreviewId} {title} {messages} {rootMessageId} />
 {/if}
 
-<ChatWindow
-	loading={$loading}
-	{pending}
-	{resuming}
-	messages={messagesPath as Message[]}
-	{messagesAlternatives}
-	shared={data.shared}
-	preprompt={data.preprompt}
-	bind:draft
-	bind:files
-	bind:dashboardViews
-	onmessage={onMessage}
-	onretry={onRetry}
-	onshowAlternateMsg={onShowAlternateMsg}
-	onstop={stopGeneration}
-	models={data.models}
-	currentModel={findCurrentModel(data.models, data.oldModels, data.model)}
-/>
+{#if currentModel}
+	<ChatWindow
+		loading={$loading}
+		{pending}
+		{resuming}
+		messages={messagesPath as Message[]}
+		{messagesAlternatives}
+		shared={data.shared}
+		preprompt={data.preprompt}
+		bind:draft
+		bind:files
+		bind:dashboardViews
+		onmessage={onMessage}
+		onretry={onRetry}
+		onshowAlternateMsg={onShowAlternateMsg}
+		onstop={stopGeneration}
+		models={data.models}
+		{currentModel}
+	/>
+{:else}
+	<ModelsUnavailable ready={data.modelsReady} />
+{/if}
 
 {#if showSubscribeModal}
 	<SubscribeModal close={() => (showSubscribeModal = false)} />

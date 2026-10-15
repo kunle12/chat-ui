@@ -13,7 +13,7 @@ export const GET: RequestHandler = async ({ locals }) => {
 	requireAuth(locals);
 	const settings = await collections.settings.findOne(authCondition(locals));
 
-	if (settings && !validateModel(models).safeParse(settings?.activeModel).success) {
+	if (settings && defaultModel && !validateModel(models).safeParse(settings?.activeModel).success) {
 		settings.activeModel = defaultModel.id;
 		await collections.settings.updateOne(authCondition(locals), {
 			$set: { activeModel: defaultModel.id },
@@ -23,6 +23,7 @@ export const GET: RequestHandler = async ({ locals }) => {
 	// if the model is unlisted, set the active model to the default model
 	if (
 		settings?.activeModel &&
+		defaultModel &&
 		models.find((m) => m.id === settings?.activeModel)?.unlisted === true
 	) {
 		settings.activeModel = defaultModel.id;

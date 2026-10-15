@@ -52,26 +52,39 @@ export const load = async ({ fetch, url }) => {
 	// inlined in the SSR payload so the client has it before any onMount fires,
 	// allowing +layout.svelte to pre-populate the mcpServers store synchronously
 	// and eliminate the mcpServersLoaded gate delay on first message.
-	const [settings, models, user, publicConfig, featureFlags, conversationsData, mcpBaseServers] =
-		(await Promise.all([
-			client.user.settings.get().then(handleResponse),
-			client.models.get().then(handleResponse),
-			client.user.get().then(handleResponse),
-			client["public-config"].get().then(handleResponse),
-			client["feature-flags"].get().then(handleResponse),
-			client.conversations.get({ query: { p: 0 } }).then(handleResponse),
-			fetch(`${url.origin}${base}/api/mcp/servers`)
-				.then((r) => (r.ok ? r.json() : []))
-				.catch(() => []),
-		])) as [
-			SettingsResponse,
-			GETModelsResponse,
-			UserInfo | null,
-			Record<string, unknown>,
-			FeatureFlags,
-			{ conversations: ConversationListItem[]; hasMore: boolean },
-			import("$lib/types/Tool").MCPServer[],
-		];
+	const [
+		settings,
+		models,
+		user,
+		publicConfig,
+		featureFlags,
+		conversationsData,
+		mcpBaseServers,
+		modelsReady,
+	] = (await Promise.all([
+		client.user.settings.get().then(handleResponse),
+		client.models.get().then(handleResponse),
+		client.user.get().then(handleResponse),
+		client["public-config"].get().then(handleResponse),
+		client["feature-flags"].get().then(handleResponse),
+		client.conversations.get({ query: { p: 0 } }).then(handleResponse),
+		fetch(`${url.origin}${base}/api/mcp/servers`)
+			.then((r) => (r.ok ? r.json() : []))
+			.catch(() => []),
+		client.models.status
+			.get()
+			.then(handleResponse)
+			.catch(() => ({ ready: false })),
+	])) as [
+		SettingsResponse,
+		GETModelsResponse,
+		UserInfo | null,
+		Record<string, unknown>,
+		FeatureFlags,
+		{ conversations: ConversationListItem[]; hasMore: boolean },
+		import("$lib/types/Tool").MCPServer[],
+		{ ready: boolean },
+	];
 
 	const defaultModel = models[0];
 
@@ -94,6 +107,7 @@ export const load = async ({ fetch, url }) => {
 		conversations,
 		models,
 		oldModels: [],
+		modelsReady: modelsReady?.ready ?? false,
 		user,
 		settings: {
 			...settings,

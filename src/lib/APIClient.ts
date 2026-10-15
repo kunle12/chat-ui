@@ -144,6 +144,8 @@ export function useAPIClient({
 			{
 				...endpoint(fetcher, `${baseUrl}/models`),
 				old: endpoint(fetcher, `${baseUrl}/models/old`),
+				// { ready: boolean } — whether the model upstream has answered yet.
+				status: endpoint(fetcher, `${baseUrl}/models/status`),
 			}
 		),
 		spaces: {

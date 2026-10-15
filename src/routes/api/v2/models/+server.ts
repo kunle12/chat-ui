@@ -3,10 +3,10 @@ import { superjsonResponse } from "$lib/server/api/utils/superjsonResponse";
 import { serializeModelSummary } from "$lib/server/api/utils/serializeModel";
 import type { GETModelsResponse } from "$lib/server/api/types";
 
-// Models are loaded once at server startup; new models appear on redeploy.
-// Cache for 60s so repeated invalidations (e.g. from settings saves) don't
-// generate a round-trip.
-const MODELS_CACHE_HEADERS = { "Cache-Control": "private, max-age=60" };
+// Models are refreshed on the server (see $lib/server/models.ts) and served
+// here. A short max-age keeps the browser re-fetching on navigation so a
+// change in the available set is reflected quickly.
+const MODELS_CACHE_HEADERS = { "Cache-Control": "private, max-age=5" };
 
 export const GET: RequestHandler = async () => {
 	try {
