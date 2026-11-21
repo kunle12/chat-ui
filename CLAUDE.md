@@ -15,8 +15,28 @@ npm run preview      # Preview production build
 npm run check        # TypeScript validation (svelte-kit sync + svelte-check)
 npm run lint         # Check formatting (Prettier) and linting (ESLint)
 npm run format       # Auto-format with Prettier
-npm run test         # Run all tests (Vitest)
+npm run test         # Run all tests (Vitest) — see the warning below before using
 ```
+
+> [!WARNING]
+> **Never run the full test suite** (`npm run test` / `npx vitest run` without a file
+> path) on a developer machine. Running every workspace at once spawns many Vitest
+> workers, each spinning up its own in-memory MongoDB (and Chromium for client
+> tests), which exhausts system RAM and can crash the machine.
+>
+> Always run a small, targeted subset instead:
+>
+> ```bash
+> # One test file (or a few paths), with parallelism capped:
+> npx vitest run --project=server src/routes/login/callback/updateUser.spec.ts \
+>   --no-file-parallelism --maxWorkers=1
+>
+> # One project at a time (client / ssr / server), not all three:
+> npx vitest run --project=server --no-file-parallelism --maxWorkers=2
+> ```
+>
+> Use `npm run check` (TypeScript) and `npm run lint` for broad, cheap verification;
+> let CI run the full suite.
 
 ### Running a Single Test
 

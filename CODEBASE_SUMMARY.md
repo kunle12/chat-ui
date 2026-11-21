@@ -60,8 +60,16 @@ npm run dev      # Dev server (localhost:5173)
 npm run build    # Production build
 npm run check    # TypeScript validation
 npm run lint     # Format + lint check
-npm run test     # Run all tests
+npm run test     # Run all tests — do NOT use locally; see warning below
 ```
+
+> [!WARNING]
+> **Never run the full test suite on a developer machine.** All three Vitest
+> workspaces at once spawn many workers, each with its own in-memory MongoDB
+> (and Chromium for client tests), exhausting system RAM and crashing the
+> machine. Run targeted subsets instead, e.g.
+> `npx vitest run --project=server <one-file.spec.ts> --no-file-parallelism --maxWorkers=1`,
+> and let CI run the full suite. See CLAUDE.md for details.
 
 ## Environment
 
