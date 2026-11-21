@@ -1,3 +1,4 @@
+import { randomUUID } from "crypto";
 import { config } from "$lib/server/config";
 import { getUserHubToken } from "$lib/server/apiToken";
 import {
@@ -10,12 +11,11 @@ import { isValidUrl } from "$lib/server/urlSafety";
 import { getOpenAiToolsForMcp } from "$lib/server/mcp/tools";
 import type {
 	ChatCompletionChunk,
-	ChatCompletionCreateParamsStreaming,
 	ChatCompletionMessageParam,
 	ChatCompletionMessageToolCall,
 } from "openai/resources/chat/completions";
 import type { Stream } from "openai/streaming";
-import { buildToolPreprompt } from "../utils/toolPrompt";
+import { toToolCallId } from "../utils/toolCallId";
 import type { EndpointMessage } from "../../endpoints/endpoints";
 import { resolveRouterTarget } from "./routerResolution";
 import {
@@ -38,8 +38,8 @@ import {
 } from "$lib/server/mcp/hf";
 import { buildImageRefResolver } from "./fileRefs";
 import { createVirtualFileExpander } from "$lib/server/mlFiles/expand";
+import { createThinkTagEscaper, unescapeThinkTags } from "$lib/utils/escapeThinkTags";
 import { mlVirtualFilesEnabled } from "$lib/server/mlFiles/enabled";
-import { prepareHistory } from "$lib/server/textGeneration/utils/prepareFiles";
 import {
 	AttachmentOverflowError,
 	budgetNotice,
@@ -51,11 +51,6 @@ import {
 	retryNotice,
 	type AttachmentMode,
 } from "$lib/server/textGeneration/utils/attachmentBudget";
-import {
-	createHistoryWindow,
-	historyCost,
-	windowLimitChars,
-} from "$lib/server/textGeneration/utils/historyWindow";
 import { historyWindowEnabled } from "$lib/server/textGeneration/utils/historyWindowFlag";
 import { withHarnessEventOnLastTool } from "$lib/server/textGeneration/utils/harnessEvent";
 import { makeImageProcessor } from "$lib/server/endpoints/images";
@@ -71,7 +66,9 @@ import {
 	resolveOAuthAccessToken,
 } from "$lib/server/mcp/oauth/connections";
 import type { McpServerConfig } from "$lib/server/mcp/httpClient";
-import { withoutContentLength } from "$lib/server/undiciCompat";
+import type { PlanStep } from "$lib/types/Plan";
+import type { Conversation } from "$lib/types/Conversation";
+import { fetchWithProviderFallback } from "$lib/server/endpoints/openai/providerFallback";
 import {
 	isMlAssistantConversation,
 	mlAssistantPayerTarget,
@@ -81,16 +78,17 @@ import {
 import { createHubBillingRewrite } from "$lib/server/mcp/hubBilling";
 import { createJobLabelRewrite } from "$lib/server/mcp/jobLabels";
 import { loadSessionJobLabels } from "$lib/server/mlRegistry/sessionLabel";
-import { mlAssistantModelEntry } from "$lib/server/mlAssistantModels";
-import { createMlBudgetGuard, withRequiredDiscriminators } from "$lib/server/mlBudget/guard";
+import { routedProvider } from "$lib/server/requestProvider";
+import { createMlBudgetGuard } from "$lib/server/mlBudget/guard";
 import { createMlRecordingGuard } from "$lib/server/mlRegistry/recordingGuard";
 import { createMlSourcesGuard } from "$lib/server/mlRegistry/sourcesGuard";
+import { createSandboxFirstGuard } from "$lib/server/mlRegistry/sandboxFirstGuard";
 import { PARENT_READER } from "$lib/types/MlSource";
 import { mlJobLabelsEnabled, mlServiceEventsEnabled } from "$lib/server/mlRegistry/enabled";
 import { markHarnessEventDelivered, pendingHarnessEvent } from "$lib/server/mlRegistry/midTurn";
+import { takeQueuedInputs } from "$lib/server/queuedInputs/deliver";
 import {
 	buildSessionStateBlock,
-	injectSessionState,
 	markSessionStateRead,
 	mlStateBlockEnabled,
 	type SessionStateBlock,
@@ -98,13 +96,22 @@ import {
 import { readMlBudget } from "$lib/server/mlBudget/budget";
 import { appendToLastToolMessage, budgetChangeNote } from "$lib/server/mlBudget/budgetNote";
 import { createRepeatedCallGuard } from "./repeatedCallGuard";
-import { withRepairedToolSchemas } from "$lib/server/mcp/schemaRepair";
 import { createSchemaPreflightGuard } from "$lib/server/mcp/preflightGuard";
 import { composeGuards } from "./toolGuard";
-import { ML_ASSISTANT_MIN_COMPLETION_TOKENS } from "$lib/constants/mlAssistant";
 import { withUpstreamRetry } from "../utils/upstreamRetry";
-import { getEnabledBuiltinTools, isNestedAgentTool, shouldSkipMcpFlow } from "../builtinTools";
-import { injectPlanState, PLAN_TOOL_NAME } from "../builtinTools/planTool";
+import {
+	getEnabledBuiltinTools,
+	isNestedAgentTool,
+	PLAN_TOOL_NAME,
+	shouldSkipMcpFlow,
+} from "../builtinTools";
+import {
+	assembleTools,
+	buildRequestPrompt,
+	completionRequestBase,
+	completionSettings,
+	mergePreprompt,
+} from "./requestPrompt";
 import { inferenceBillingHeaders } from "$lib/server/billing";
 
 export type RunMcpFlowContext = Pick<
@@ -115,6 +122,7 @@ export type RunMcpFlowContext = Pick<
 	| "forceMultimodal"
 	| "forceTools"
 	| "provider"
+	| "providerIsDefault"
 	| "reasoningEffort"
 	| "reasoningOverride"
 	| "locals"
@@ -159,6 +167,35 @@ const MAX_CUT_ANSWER_RETRIES = 1;
 // template leaks their native tool syntax into content. A second leak
 // finalizes as-is rather than looping on a model that cannot comply.
 const MAX_LEAKED_TOOL_CALL_RETRIES = 1;
+
+// One more attempt after an answer that ends the turn before steps of this
+// turn's plan were even started. A round without tool calls is final, so a model
+// whose reasoning is cut short mid-task reports the leftover half-thought as a
+// finished turn. Observed with GLM-class models reasoning about Qwen's
+// `<think></think>` switch: the literal tags end their reasoning at the
+// provider. A plan from an earlier turn is not this request's to finish, and a
+// running step alone is usually done work the model forgot to tick off.
+const MAX_UNFINISHED_PLAN_RETRIES = 1;
+
+/**
+ * Open steps of a plan written during the turn that writes to `messageId`, or
+ * none unless one of them was never started.
+ */
+export function unfinishedPlanSteps(
+	conv: Pick<Conversation, "plan" | "messages">,
+	messageId?: string
+): PlanStep[] {
+	const { plan } = conv;
+	if (!plan) return [];
+	// A steered continuation is a new message but still the original turn.
+	const message = conv.messages.find((m) => m.id === messageId);
+	const turn = message?.queuedContinuationOf
+		? conv.messages.find((m) => m.id === message.queuedContinuationOf)
+		: message;
+	if (!turn?.createdAt || plan.updatedAt < turn.createdAt) return [];
+	if (!plan.steps.some((s) => s.status === "pending")) return [];
+	return plan.steps.filter((s) => s.status === "pending" || s.status === "in_progress");
+}
 /**
  * The `<tool_call>name<arg_key>k</arg_key><arg_value>v</arg_value>` dialect, for
  * a leak that carries no advertised tool name to match on.
@@ -180,17 +217,21 @@ export async function* runMcpFlow({
 	forceMultimodal,
 	forceTools,
 	provider,
+	providerIsDefault,
 	reasoningEffort,
 	reasoningOverride,
 	locals,
 	generationId,
 	messageId,
 	preprompt,
+	turnContext,
 	abortSignal,
 	abortController,
 	promptedAt,
 }: RunMcpFlowContext & {
 	preprompt?: string;
+	/** stamped at the end of the user's latest message, see resolveTurnContext */
+	turnContext?: string;
 	abortSignal?: AbortSignal;
 	abortController?: AbortController;
 	promptedAt?: Date;
@@ -211,7 +252,7 @@ export async function* runMcpFlow({
 	};
 	const builtinTools = getEnabledBuiltinTools({
 		conv,
-		namespace: (locals as unknown as { user?: { username?: string } })?.user?.username,
+		namespace: locals?.publishNamespace ?? locals?.user?.username,
 		hfToken:
 			(locals as unknown as { hfAccessToken?: string } | undefined)?.hfAccessToken ??
 			getUserHubToken(locals),
@@ -285,6 +326,9 @@ export async function* runMcpFlow({
 	// Built here so it spans the turn's rounds; chained below, once the tool
 	// mapping the schema check reads exists.
 	const repeatedCallGuard = createRepeatedCallGuard();
+	const sandboxFirstGuard = mlAssistant
+		? createSandboxFirstGuard({ conversationId: conv._id })
+		: undefined;
 
 	// Start from env-configured servers
 	let servers = getMcpServers();
@@ -562,26 +606,20 @@ export async function* runMcpFlow({
 		const { tools: mcpTools, mapping } = await getOpenAiToolsForMcp(servers, {
 			signal: abortSignal,
 		});
-		// An MCP tool that collides with a builtin name is dropped: dispatch checks
-		// builtins first, so the MCP twin would be advertised but unreachable.
-		const builtinNames = new Set(builtinTools.map((tool) => tool.name));
-		const collisions = mcpTools.filter((tool) => builtinNames.has(tool.function.name));
+		const { oaTools, shapedMcpTools, collisions } = assembleTools({
+			builtinTools,
+			mcpTools,
+			mapping,
+			servers,
+			mlAssistant,
+			virtualFiles: expandVirtualFiles !== undefined,
+		});
 		if (collisions.length > 0) {
 			logger.warn(
 				{ dropped: collisions.map((tool) => tool.function.name) },
 				"[mcp] dropped MCP tools shadowed by builtin tools"
 			);
 		}
-		// In the mode, gated tools advertise their routing discriminator as
-		// required — the Hub's own schema doesn't, and calls without one can only
-		// bounce off the budget gate's fail-closed path.
-		const gatedMcpTools = mlAssistant ? withRequiredDiscriminators(mcpTools, mapping) : mcpTools;
-		// Applied to every conversation, mode or not: the Hub tools whose real
-		// interface is a grammar in prose misfire the same way whoever is calling
-		// them. See mcp/schemaRepair.ts for what the traces showed.
-		const shapedMcpTools = withRepairedToolSchemas(gatedMcpTools, mapping, servers, {
-			virtualFiles: expandVirtualFiles !== undefined,
-		});
 		// Cheapest first, and only the last link may book anything (see
 		// composeGuards): a repeat of a call that already failed the same way, then
 		// arguments that cannot satisfy the tool's own schema, then the budget.
@@ -591,14 +629,14 @@ export async function* runMcpFlow({
 		const guard = [
 			repeatedCallGuard,
 			createSchemaPreflightGuard(mapping),
+			// it asks for a sandbox, so it applies only where one can be created
+			...(sandboxFirstGuard && Object.values(mapping).some((m) => m.tool === "hf_sandbox")
+				? [sandboxFirstGuard]
+				: []),
 			...(recordingGuard ? [recordingGuard] : []),
 			...(sourcesGuardFor ? [sourcesGuardFor(PARENT_READER)] : []),
 			...(budgetGuard ? [budgetGuard] : []),
 		].reduce(composeGuards);
-		const oaTools = [
-			...builtinTools.map((tool) => tool.definition),
-			...shapedMcpTools.filter((tool) => !builtinNames.has(tool.function.name)),
-		];
 		try {
 			logger.info(
 				{ toolCount: oaTools.length, toolNames: oaTools.map((t) => t.function.name) },
@@ -612,13 +650,20 @@ export async function* runMcpFlow({
 
 		const { OpenAI } = await import("openai");
 
+		// An Omni request arrives without a provider, so the routed model's default applies.
+		const requested = model.isRouter
+			? routedProvider(targetModel)
+			: { provider, providerIsDefault: providerIsDefault ?? false };
+
 		// Capture provider header (x-inference-provider) from the upstream OpenAI-compatible server.
 		let providerHeader: string | undefined;
 		const captureProviderFetch = async (
 			input: RequestInfo | URL,
 			init?: RequestInit
 		): Promise<Response> => {
-			const res = await fetch(input, withoutContentLength(init));
+			const res = await fetchWithProviderFallback(input, init, targetModel, {
+				defaultPin: requested.providerIsDefault,
+			});
 			const p = res.headers.get("x-inference-provider");
 			if (p && !providerHeader) providerHeader = p;
 			return res;
@@ -666,155 +711,64 @@ export async function* runMcpFlow({
 
 		// Hoisted above the message prep so the history budget can reserve the
 		// reply allowance this request will actually ask for.
-		const parameters = {
-			...targetModel.parameters,
-			...(mlAssistant ? mlAssistantModelEntry(targetModel.id || targetModel.name)?.parameters : {}),
-			...assistant?.generateSettings,
-		} as Record<string, unknown>;
-		const catalogMaxTokens =
-			(parameters?.max_tokens as number | undefined) ??
-			(parameters?.max_new_tokens as number | undefined) ??
-			(parameters?.max_completion_tokens as number | undefined);
-		const targetContextLength = (targetModel as unknown as { contextLength?: number })
-			.contextLength;
-		// The preset floors the reply allowance — see the constant for why. The
-		// floor never claims more than half the model's window: prompt plus reply
-		// must fit it, and a backend that enforces the sum would reject the very
-		// first request of a small-window model. A catalog value above the floor
-		// still wins. The research sub-agent inherits this through completionBase.
-		const clampedFloor = targetContextLength
-			? Math.min(ML_ASSISTANT_MIN_COMPLETION_TOKENS, Math.floor(targetContextLength / 2))
-			: ML_ASSISTANT_MIN_COMPLETION_TOKENS;
-		const maxTokens = mlAssistant
-			? Math.max(catalogMaxTokens ?? 0, clampedFloor)
-			: catalogMaxTokens;
+		const {
+			parameters,
+			maxTokens,
+			contextLength: targetContextLength,
+		} = completionSettings({
+			targetModel: targetModel as typeof targetModel & { contextLength?: number },
+			mlAssistant,
+			generateSettings: assistant?.generateSettings as Record<string, unknown> | undefined,
+		});
 
 		const userTimezone = (locals as unknown as { timezone?: string })?.timezone;
-		// In the mode the doctrine paragraphs are swapped, not appended to: the
-		// generic restraint rule tells the model not to reach for a tool unless it
-		// lacks a capability, and names writing code as a case to answer directly,
-		// which is the inverse of the preset's doctrine.
-		const toolPreprompt = buildToolPreprompt(oaTools, userTimezone, builtinTools, {
+		const mergedPreprompt = mergePreprompt({
+			oaTools,
+			builtinTools,
+			preprompt,
+			timezone: userTimezone,
 			mlAssistant,
 		});
-		const prepromptPieces: string[] = [];
-		if (toolPreprompt.trim().length > 0) {
-			prepromptPieces.push(toolPreprompt);
-		}
-		if (typeof preprompt === "string" && preprompt.trim().length > 0) {
-			prepromptPieces.push(preprompt);
-		}
-		const mergedPreprompt = prepromptPieces.join("\n\n");
 		const stateBlock = mlStateBlockEnabled(conv) ? await buildSessionStateBlock(conv) : undefined;
 		let unreadEnded: SessionStateBlock["ended"] = stateBlock?.ended ?? [];
 
 		// built again, attachments cut, when the provider refuses the request for its size
 		const readToolImage = makeToolImageReader(conv._id);
-		const buildPrompt = async (attachments: AttachmentMode) => {
-			const history = await prepareHistory(messages, imageProcessor, mmEnabled, {
-				replayToolHistory: true,
-				readToolImage,
-				attachReasoning: mayEchoReasoning,
-				// The model resolved for THIS turn. Under the "omni" router alias a
-				// prior turn in the same conversation can have been produced by a
-				// different model (per-message routing, no user action needed); this
-				// gates reasoning_content to only replay onto its own producer.
-				currentProducerModel: candidateModelId ?? targetModel.id ?? targetModel.name,
-				// The resolved target's window, not the router alias's: under "omni"
-				// the alias itself has none, and the candidate is what serves this
-				// request.
-				contextLengthTokens: targetContextLength,
-				maxOutputTokens: maxTokens,
-				slidingWindow: historyWindowEnabled(),
+		const buildPrompt = (attachments: AttachmentMode) =>
+			buildRequestPrompt({
+				messages,
 				attachments,
+				imageProcessor,
+				multimodal: mmEnabled,
+				readToolImage,
+				echoReasoning: mayEchoReasoning,
+				producerModel: candidateModelId ?? targetModel.id ?? targetModel.name,
+				contextLength: targetContextLength,
+				maxTokens,
+				slidingWindow: historyWindowEnabled(),
 				mlAssistant,
+				systemPrompt: mergedPreprompt,
+				oaTools,
+				builtinTools,
+				conv,
+				messageId,
+				turnContext,
+				stateBlock: stateBlock?.text,
 			});
-			let prompt: ChatCompletionMessageParam[] = history.messages;
-			const hasSystemMessage = prompt.length > 0 && prompt[0]?.role === "system";
-			if (hasSystemMessage) {
-				if (mergedPreprompt.length > 0) {
-					const existing = prompt[0].content ?? "";
-					const existingText = typeof existing === "string" ? existing : "";
-					prompt[0].content = mergedPreprompt + (existingText ? "\n\n" + existingText : "");
-				}
-			} else if (mergedPreprompt.length > 0) {
-				prompt = [{ role: "system", content: mergedPreprompt }, ...prompt];
-			}
-
-			const window =
-				history.units && targetContextLength
-					? createHistoryWindow({
-							conversationId: conv._id,
-							units: history.units,
-							offset: prompt.length - history.messages.length,
-							limitChars: windowLimitChars(targetContextLength, maxTokens),
-							fixedChars: historyCost(oaTools),
-							stored: conv.historyWindow,
-							liveMessageId: messageId,
-						})
-					: undefined;
-
-			// Tail-injected once per turn; within the turn, freshness travels in the tool
-			// results. Gated on the tool being offered so a stale plan can't tell the model
-			// to call a tool it doesn't have.
-			if (conv.plan && builtinTools.some((tool) => tool.name === PLAN_TOOL_NAME)) {
-				prompt = injectPlanState(prompt, conv.plan);
-			}
-			if (stateBlock) {
-				prompt = injectSessionState(prompt, stateBlock.text);
-			}
-
-			// Work around servers that reject `system` role
-			if (
-				typeof config.OPENAI_BASE_URL === "string" &&
-				config.OPENAI_BASE_URL.length > 0 &&
-				(config.OPENAI_BASE_URL.includes("hf.space") ||
-					config.OPENAI_BASE_URL.includes("gradio.app")) &&
-				prompt[0]?.role === "system"
-			) {
-				prompt[0] = { ...prompt[0], role: "user" };
-			}
-			return { prompt, window, attachments: history.attachments };
-		};
 		let built = await buildPrompt("budget");
 		let messagesOpenAI = built.prompt;
 		let historyWindow = built.window;
 		let attachmentsCut = false;
 		let pendingNotice = budgetNotice(built.attachments);
 
-		const stopSequences =
-			typeof parameters?.stop === "string"
-				? parameters.stop
-				: Array.isArray(parameters?.stop)
-					? (parameters.stop as string[])
-					: undefined;
-
-		// Build model ID with optional provider suffix (e.g., "model:fastest" or "model:together")
-		const baseModelId = targetModel.id ?? targetModel.name;
-		const modelIdWithProvider =
-			provider && provider !== "auto" ? `${baseModelId}:${provider}` : baseModelId;
-
-		const completionBase: Omit<ChatCompletionCreateParamsStreaming, "messages"> & {
-			reasoning_effort?: "low" | "medium" | "high";
-		} = {
-			model: modelIdWithProvider,
-			stream: true,
-			temperature: typeof parameters?.temperature === "number" ? parameters.temperature : undefined,
-			top_p: typeof parameters?.top_p === "number" ? parameters.top_p : undefined,
-			frequency_penalty:
-				typeof parameters?.frequency_penalty === "number"
-					? parameters.frequency_penalty
-					: typeof parameters?.repetition_penalty === "number"
-						? parameters.repetition_penalty
-						: undefined,
-			presence_penalty:
-				typeof parameters?.presence_penalty === "number" ? parameters.presence_penalty : undefined,
-			stop: stopSequences,
-			max_tokens: typeof maxTokens === "number" ? maxTokens : undefined,
+		const completionBase = completionRequestBase({
+			model: targetModel.id ?? targetModel.name,
+			provider: requested.provider,
+			parameters,
+			maxTokens,
 			tools: oaTools,
-			tool_choice: "auto",
-			...(reasoningEffort ? { reasoning_effort: reasoningEffort } : {}),
-		};
+			reasoningEffort,
+		});
 
 		// Sub-agent builtins run nested tool loops and need the request plumbing
 		// this turn resolved — client, sampling params, the listed MCP tools —
@@ -880,9 +834,13 @@ export async function* runMcpFlow({
 		// one). Held here and flushed once a non-blank delta opens the block, so
 		// the persisted trace stays byte-exact instead of silently dropping them.
 		let pendingReasoningWhitespace = "";
+		const reasoningEscaper = createThinkTagEscaper();
 		let truncatedToolCallRetries = 0;
 		let cutAnswerRetries = 0;
 		let leakedToolCallRetries = 0;
+		let unfinishedPlanRetries = 0;
+		// Its retry asked for a concise final answer; more tool rounds won't fit.
+		let recoveringFromOutputLimit = false;
 		// For the leaked-markup check: only names that are really callable this
 		// run can make "<name" in a final answer mean a call that never happened.
 		const advertisedToolNames = oaTools.map((tool) => tool.function.name);
@@ -899,6 +857,8 @@ export async function* runMcpFlow({
 			);
 		}
 
+		// one set per turn, like the per-message set replay uses
+		const sentToolCallIds = new Set<string>();
 		for (let loop = 0; loop < maxToolRounds; loop += 1) {
 			// Check for abort at the start of each loop iteration
 			if (checkAborted()) {
@@ -1075,6 +1035,8 @@ export async function* runMcpFlow({
 				// Merge reasoning + content into a single combined token stream, mirroring
 				// the OpenAI adapter so the UI can auto-detect <think> blocks.
 				let combined = "";
+				// what closes the think block in this delta, the held reasoning tail included
+				let closer = "";
 				// Whitespace-only deltas still count once a think block is open
 				// (paragraph breaks are part of the byte-exact trace); non-blank
 				// text is only required to OPEN a block, so stray leading
@@ -1083,9 +1045,10 @@ export async function* runMcpFlow({
 				// delta arrives and flushed into the opening of the block.
 				if (deltaReasoning.length > 0) {
 					if (thinkOpen) {
-						combined += deltaReasoning;
+						combined += reasoningEscaper.push(deltaReasoning);
 					} else if (deltaReasoning.trim().length > 0) {
-						combined += "<think>" + pendingReasoningWhitespace + deltaReasoning;
+						combined +=
+							"<think>" + pendingReasoningWhitespace + reasoningEscaper.push(deltaReasoning);
 						pendingReasoningWhitespace = "";
 						thinkOpen = true;
 					} else {
@@ -1095,7 +1058,8 @@ export async function* runMcpFlow({
 
 				if (deltaContent && deltaContent.length > 0) {
 					if (thinkOpen) {
-						combined += "</think>" + deltaContent;
+						closer = reasoningEscaper.flush() + "</think>";
+						combined += closer + deltaContent;
 						thinkOpen = false;
 					} else {
 						combined += deltaContent;
@@ -1115,7 +1079,7 @@ export async function* runMcpFlow({
 						// stopped the content stream. The client saw the opener, so it
 						// must see the closer too, or it renders that reasoning block as
 						// still streaming for the rest of the turn.
-						yield { type: MessageUpdateType.Stream, token: "</think>" };
+						yield { type: MessageUpdateType.Stream, token: closer };
 						clientThinkOpen = false;
 					}
 				}
@@ -1148,15 +1112,16 @@ export async function* runMcpFlow({
 			// regex matches `<think>` to end-of-string, so an unclosed block would
 			// hide everything that follows.
 			if (thinkOpen) {
+				const closer = reasoningEscaper.flush() + "</think>";
 				// Gate on what the client saw, not on streamedContent: a round can
 				// stream content early and open the think block only after tool-call
 				// deltas muted the stream — a bare closer then shows up as literal
 				// "</think>" text.
 				if (clientThinkOpen) {
-					yield { type: MessageUpdateType.Stream, token: "</think>" };
+					yield { type: MessageUpdateType.Stream, token: closer };
 					clientThinkOpen = false;
 				}
-				lastAssistantContent += "</think>";
+				lastAssistantContent += closer;
 				thinkOpen = false;
 			}
 
@@ -1194,56 +1159,15 @@ export async function* runMcpFlow({
 			}
 
 			if (!discardedTruncatedToolCalls && Object.keys(toolCallState).length > 0) {
-				// If any streamed call is missing id, perform a quick non-stream retry to recover full tool_calls with ids
-				const missingId = Object.values(toolCallState).some((c) => c?.name && !c?.id);
-				let calls: NormalizedToolCall[];
-				if (missingId) {
-					logger.debug(
-						{ loop },
-						"[mcp] missing tool_call id in stream; retrying non-stream to recover ids"
-					);
-					// Same absorption as the streaming call above: this recovery
-					// request is mid-round, where a surfaced failure costs the whole turn.
-					const nonStream = await withUpstreamRetry(
-						() =>
-							openai.chat.completions.create(
-								{ ...completionBase, messages: requestMessages, stream: false },
-								{
-									signal: abortSignal,
-									headers: {
-										"ChatUI-Conversation-ID": conv._id.toString(),
-										"X-use-cache": "false",
-										...(config.USE_USER_TOKEN === "true" && locals?.token
-											? { Authorization: `Bearer ${locals.token}` }
-											: {}),
-									},
-								}
-							),
-						{
-							signal: abortSignal,
-							onBackoff: (attempt, delayMs, err) =>
-								logger.warn(
-									{ loop, attempt, delayMs, err: String(err) },
-									"[mcp] upstream failure on id recovery; backing off in-loop"
-								),
-						}
-					);
-					const tc = nonStream.choices?.[0]?.message?.tool_calls ?? [];
-					calls = tc.map((t) => ({
-						id: t.id,
-						name: t.function?.name ?? "",
-						arguments: t.function?.arguments ?? "",
-					}));
-				} else {
-					calls = Object.values(toolCallState)
-						.map((c) => (c?.id && c?.name ? c : undefined))
-						.filter(Boolean)
-						.map((c) => ({
-							id: c?.id ?? "",
-							name: c?.name ?? "",
-							arguments: c?.arguments ?? "",
-						})) as NormalizedToolCall[];
-				}
+				// No recovery request for a call streamed without an id: the id the
+				// provider sees is derived below, its own is only kept as originalId.
+				let calls = Object.values(toolCallState)
+					.filter((c) => c?.name)
+					.map((c) => ({
+						id: c?.id ?? "",
+						name: c?.name ?? "",
+						arguments: c?.arguments ?? "",
+					})) as NormalizedToolCall[];
 
 				if (rewriteArgs) {
 					calls = withRewrittenArguments(calls, {
@@ -1254,6 +1178,15 @@ export async function* runMcpFlow({
 						rewrite: rewriteArgs,
 					});
 				}
+
+				// The ids history replay derives from the same uuids on later turns,
+				// not the provider's: a round replayed with other ids stops matching
+				// the prefix the provider cached, and Mistral-family templates refuse
+				// ids that are not nine alphanumeric characters anyway.
+				calls = calls.map((call) => {
+					const uuid = randomUUID();
+					return { ...call, uuid, id: toToolCallId(uuid, sentToolCallIds), providerId: call.id };
+				});
 
 				// Include the assistant message with tool_calls so the next round
 				// sees both the calls and their outputs, matching MCP branch behavior.
@@ -1295,8 +1228,9 @@ export async function* runMcpFlow({
 					// Gated by mayEchoReasoning — see where it is defined. Still
 					// persisted below regardless of the gate: recording what the model
 					// thought is inert, and only sending it can break a request.
+					// Persisted escaped like content, so only the echo is unescaped.
 					...(mayEchoReasoning && reasoningForToolMsg.trim().length > 0
-						? { reasoning_content: reasoningForToolMsg }
+						? { reasoning_content: unescapeThinkTags(reasoningForToolMsg) }
 						: {}),
 				};
 
@@ -1404,6 +1338,20 @@ export async function* runMcpFlow({
 						await markHarnessEventDelivered(conv._id, pending.services);
 					}
 				}
+				// what is left when the last round runs out starts the next turn instead
+				if (
+					mlAssistant &&
+					messageId &&
+					lastCallUuid &&
+					toolMsgCount > 0 &&
+					loop + 1 < maxToolRounds
+				) {
+					const queued = await takeQueuedInputs(conv._id, messageId, lastCallUuid);
+					if (queued) {
+						yield queued;
+						messagesOpenAI = withHarnessEventOnLastTool(messagesOpenAI, queued.text);
+					}
+				}
 				// Continue loop: next iteration will use tool messages to get the final content
 				continue;
 			}
@@ -1429,6 +1377,7 @@ export async function* runMcpFlow({
 				(finishReason === "length" || thinkOnlyAnswer) && !discardedTruncatedToolCalls;
 			if (cutMidAnswer && cutAnswerRetries < MAX_CUT_ANSWER_RETRIES) {
 				cutAnswerRetries += 1;
+				if (finishReason === "length") recoveringFromOutputLimit = true;
 				logger.warn(
 					{ loop, attempt: cutAnswerRetries, finishReason, thinkOnlyAnswer },
 					"[mcp] response ended before a visible answer; retrying"
@@ -1444,7 +1393,7 @@ export async function* runMcpFlow({
 						content:
 							finishReason === "length"
 								? "[SYSTEM: Your previous response hit the output limit before it finished — most of it was internal reasoning. Give your final answer now, with minimal further reasoning and the answer itself kept concise.]"
-								: "[SYSTEM: Your previous response ended while still inside internal reasoning, so no visible answer was produced. Give your final answer now, with minimal further reasoning and the answer itself kept concise.]",
+								: "[SYSTEM: Your previous response ended while still inside internal reasoning, so nothing visible was produced and no tool was called. Continue from where you left off, with minimal further reasoning: make the next tool call if the task needs one, otherwise give your final answer, kept concise.]",
 					},
 				];
 				continue;
@@ -1482,6 +1431,32 @@ export async function* runMcpFlow({
 					{
 						role: "user" as const,
 						content: `[SYSTEM: Your previous response wrote a tool call as text markup (${leakedToolName ? `<${leakedToolName}> tags` : "tool-call tags such as <arg_value> and </tool_call>"}). That text called nothing — no tool ran, and the user saw broken markup instead of a working control. Respond again: make the call through the function-calling mechanism as a real tool call, and keep tool markup out of your reply text.]`,
+					},
+				];
+				continue;
+			}
+			// Nothing to nudge toward when the plan isn't offered this turn.
+			const openSteps =
+				finishReason === "length" ||
+				recoveringFromOutputLimit ||
+				!advertisedToolNames.includes(PLAN_TOOL_NAME)
+					? []
+					: unfinishedPlanSteps(conv, messageId);
+			if (openSteps.length > 0 && unfinishedPlanRetries < MAX_UNFINISHED_PLAN_RETRIES) {
+				unfinishedPlanRetries += 1;
+				logger.warn(
+					{ loop, openSteps: openSteps.length, attempt: unfinishedPlanRetries },
+					"[mcp] final answer left plan steps unfinished; retrying"
+				);
+				messagesOpenAI = [
+					...messagesOpenAI,
+					{
+						role: "assistant" as const,
+						content: visibleContent || "(Response ended mid-reasoning, before a visible answer.)",
+					},
+					{
+						role: "user" as const,
+						content: `[SYSTEM: Your previous response ended the turn, but your plan still has unfinished steps: ${openSteps.map((s) => `"${s.step}"`).join(", ")}. Continue with the next step now by making its tool call. If a step is already done, or can't or shouldn't be done, call ${PLAN_TOOL_NAME} to mark it completed or skipped, then give your final answer. If a step is waiting on input only the user can give, leave it pending and end the turn asking for it.]`,
 					},
 				];
 				continue;

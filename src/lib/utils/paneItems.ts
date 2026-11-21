@@ -1,12 +1,13 @@
 import type { Message } from "$lib/types/Message";
-import type { SidePaneView } from "$lib/stores/sidePane.svelte";
 import type { ArtifactRegistry } from "./artifacts";
 import type { TrackioDashboard } from "./trackio";
+import type { WorkflowSpace } from "./workflowSpace";
+import type { PaperRef } from "./paper";
 
 /**
  * Everything the side pane can show for one conversation, as a single ordered
- * list the user can page through: artifacts, Trackio dashboards, and whatever
- * embeddable thing comes next.
+ * list the user can open as tabs: artifacts, Trackio dashboards, gr.Workflow
+ * Spaces, papers, and whatever embeddable thing comes next.
  *
  * There is one pane and one axis. An artifact contributes ONE item however many
  * versions it has — versions are their own axis inside the artifact view, and
@@ -19,14 +20,9 @@ import type { TrackioDashboard } from "./trackio";
 
 export type PaneItem =
 	| { kind: "artifact"; identifier: string; label: string }
-	| { kind: "trackio"; url: string; label: string };
-
-/** The pane's current selection, as the store holds it. */
-export interface PaneSelection {
-	view: SidePaneView;
-	identifier: string | null;
-	trackioUrl?: string;
-}
+	| { kind: "trackio"; url: string; label: string }
+	| { kind: "workflow"; url: string; label: string; spaceId: string }
+	| { kind: "paper"; paperId: string; label: string };
 
 /**
  * Items in conversation order: by the message they first appeared in, and
@@ -40,7 +36,9 @@ export interface PaneSelection {
 export function collectPaneItems(
 	messages: Array<Pick<Message, "id">>,
 	registry: ArtifactRegistry,
-	dashboards: TrackioDashboard[]
+	dashboards: TrackioDashboard[],
+	workflows: WorkflowSpace[] = [],
+	papers: PaperRef[] = []
 ): PaneItem[] {
 	const position = new Map<Message["id"], number>();
 	messages.forEach((message, index) => position.set(message.id, index));
@@ -57,6 +55,22 @@ export function collectPaneItems(
 		entries.push({
 			item: { kind: "trackio", url: dashboard.url, label: dashboard.label },
 			message: at(dashboard.messageId),
+			withinMessage: 0,
+		});
+	}
+
+	for (const { url, label, spaceId, messageId } of workflows) {
+		entries.push({
+			item: { kind: "workflow", url, label, spaceId },
+			message: at(messageId),
+			withinMessage: 0,
+		});
+	}
+
+	for (const { id, title, messageId } of papers) {
+		entries.push({
+			item: { kind: "paper", paperId: id, label: title },
+			message: at(messageId),
 			withinMessage: 0,
 		});
 	}
@@ -84,14 +98,16 @@ export function collectPaneItems(
 	return entries.map((entry) => entry.item);
 }
 
-/** Whether an item is the one the pane is currently showing. */
-export function isPaneItemSelected(item: PaneItem, selection: PaneSelection): boolean {
-	return item.kind === "artifact"
-		? selection.view === "artifact" && selection.identifier === item.identifier
-		: selection.view === "trackio" && selection.trackioUrl === item.url;
-}
-
-/** Index of the selected item, or -1 when the selection is not in the list. */
-export function findPaneItemIndex(items: PaneItem[], selection: PaneSelection): number {
-	return items.findIndex((item) => isPaneItemSelected(item, selection));
+/** The tab an item opens in, matching `paneTabId` in the side pane store. */
+export function paneItemTabId(item: PaneItem): string {
+	switch (item.kind) {
+		case "artifact":
+			return `artifact:${item.identifier}`;
+		case "trackio":
+			return `trackio:${item.url}`;
+		case "workflow":
+			return `workflow:${item.url}`;
+		case "paper":
+			return `paper:${item.paperId}`;
+	}
 }

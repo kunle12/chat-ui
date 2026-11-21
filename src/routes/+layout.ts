@@ -1,4 +1,5 @@
 import type { ConvSidebar } from "$lib/types/ConvSidebar";
+import type { ManagedBy } from "$lib/types/Conversation";
 import { useAPIClient, handleResponse } from "$lib/APIClient";
 import { getConfigManager } from "$lib/utils/PublicConfig.svelte";
 import type { GETModelsResponse, FeatureFlags } from "$lib/server/api/types";
@@ -10,6 +11,7 @@ interface ConversationListItem {
 	updatedAt: Date | string;
 	model?: string;
 	mlAssistant?: boolean;
+	managedBy?: ManagedBy;
 }
 
 interface UserInfo {
@@ -100,6 +102,7 @@ export const load = async ({ fetch, url }) => {
 			model: conv.model ?? defaultModel?.id,
 			updatedAt: new Date(conv.updatedAt),
 			mlAssistant: conv.mlAssistant ?? false,
+			managedBy: conv.managedBy,
 		} satisfies ConvSidebar;
 	});
 

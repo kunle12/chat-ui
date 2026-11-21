@@ -115,6 +115,7 @@ describe("registration", () => {
 			)
 		).toEqual([
 			"ask_user_question",
+			"request_review",
 			"update_plan",
 			"wait",
 			"github_list_repos",
@@ -125,6 +126,9 @@ describe("registration", () => {
 			"check_job",
 			"create_trackio",
 			"read_trackio",
+			"open_paper",
+			"read_paper",
+			"create_workflow",
 			"write_file",
 			"edit_file",
 			"read_file",
@@ -144,6 +148,7 @@ describe("registration", () => {
 			)
 		).toEqual([
 			"ask_user_question",
+			"request_review",
 			"update_plan",
 			"wait",
 			"research",
@@ -151,6 +156,9 @@ describe("registration", () => {
 			"check_job",
 			"create_trackio",
 			"read_trackio",
+			"open_paper",
+			"read_paper",
+			"create_workflow",
 			"write_file",
 			"edit_file",
 			"read_file",

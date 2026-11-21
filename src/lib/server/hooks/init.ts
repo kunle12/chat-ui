@@ -8,9 +8,12 @@ import { AbortedGenerations } from "$lib/server/abortedGenerations";
 import { GenerationReaper } from "$lib/server/generation/reaper";
 import { ParkedCallSweeper } from "$lib/server/generation/parkedSweeper";
 import { AnsweredAskSweeper } from "$lib/server/generation/askResume";
+import { QueuedInputSweeper } from "$lib/server/queuedInputs/drain";
+import { ML_ASSISTANT_MODE } from "$lib/utils/mlAssistantFlag";
 import { MlServicePoller } from "$lib/server/mlRegistry/poller";
 import { mlServicePollerEnabled } from "$lib/server/mlRegistry/enabled";
 import { adminTokenManager } from "$lib/server/adminToken";
+import { hasSessionOauthKey } from "$lib/server/sessionOauth";
 import { MetricsServer } from "$lib/server/metrics";
 import { getShareThumbnailPng } from "$lib/server/shareThumbnail/shareThumbnail";
 
@@ -29,6 +32,10 @@ export async function initServer(): Promise<void> {
 		logger.warn(
 			"HF_TOKEN is deprecated in favor of OPENAI_API_KEY. Please migrate to OPENAI_API_KEY."
 		);
+	}
+
+	if (config.isHuggingChat && !hasSessionOauthKey()) {
+		throw new Error("SESSION_OAUTH_ENCRYPTION_KEY must be set for HuggingChat");
 	}
 
 	logger.info("Starting server...");
@@ -51,6 +58,7 @@ export async function initServer(): Promise<void> {
 	GenerationReaper.getInstance();
 	ParkedCallSweeper.getInstance();
 	AnsweredAskSweeper.getInstance();
+	if (ML_ASSISTANT_MODE) QueuedInputSweeper.getInstance();
 	if (mlServicePollerEnabled()) MlServicePoller.getInstance();
 
 	// Warm up the share-thumbnail renderer: the first satori render in a fresh
@@ -63,6 +71,11 @@ export async function initServer(): Promise<void> {
 		isHuggingChat: config.isHuggingChat,
 		appName: config.PUBLIC_APP_NAME,
 	}).catch((err) => logger.warn({ err }, "Failed to warm up share thumbnail renderer"));
+
+	if (config.SLACK_ML_ENABLED === "true") {
+		const { startSlackBot } = await import("$lib/server/slack/bot");
+		await startSlackBot();
+	}
 
 	adminTokenManager.displayToken();
 

@@ -12,6 +12,7 @@ import {
 	type HistoryUnit,
 } from "./historyWindow";
 import type { EndpointMessage } from "$lib/server/endpoints/endpoints";
+import { JOB_FAILED_NOTE, withJobFailedNote } from "../builtinTools/jobCheckPrompt";
 import type { makeImageProcessor } from "$lib/server/endpoints/images";
 import {
 	MessageToolUpdateType,
@@ -482,7 +483,8 @@ describe("prepareMessagesWithFiles tool history replay", () => {
 	it("dedups a round preamble persisted with leading whitespace", async () => {
 		// The pre-tool stream often starts with newlines after a think block; a
 		// Call update persisted untrimmed must still match the trim-normalized
-		// visible text, or the preamble replays twice.
+		// visible text, or the preamble replays twice. The round itself replays the
+		// bytes the live loop sent, so the provider's cached prefix still matches.
 		const messages: EndpointMessage[] = [
 			{
 				from: "assistant",
@@ -502,7 +504,7 @@ describe("prepareMessagesWithFiles tool history replay", () => {
 		});
 		const roundMessage = prepared[0] as { content?: string };
 		const finalMessage = prepared.at(-1) as { content?: string };
-		expect(roundMessage.content).toBe("Let me check that.");
+		expect(roundMessage.content).toBe("\n\nLet me check that.");
 		expect(finalMessage.content).toContain("Here is the answer.");
 		expect(finalMessage.content).not.toContain("Let me check that.");
 	});
@@ -1473,6 +1475,33 @@ describe("harness events in replay", () => {
 	});
 });
 
+describe("failed job note in replay", () => {
+	const failed = (): HistoryMessage[] => [
+		user("u0", "train it"),
+		{
+			id: "a0",
+			from: "assistant",
+			content: "",
+			contentShape: 2,
+			updates: [
+				callUpdate("c1", "check_job", { job_id: "j1", task: "did it start?" }),
+				resultUpdate("c1", "check_job", "- Status: failed.\n- If it failed: ImportError"),
+			],
+		},
+	];
+
+	it("adds the note to a failed check_job report, as the live request does", async () => {
+		const replayed = await prepareMessagesWithFiles(failed(), imageProcessor, false, {
+			replayToolHistory: true,
+		});
+
+		expect(textOf(replayed[2])).toBe(
+			withJobFailedNote("check_job", "- Status: failed.\n- If it failed: ImportError")
+		);
+		expect(textOf(replayed[2])).toContain(JOB_FAILED_NOTE);
+	});
+});
+
 describe("tool images in replay", () => {
 	const passThrough = (async (file: { value: string; mime: string }) => ({
 		image: Buffer.from(file.value, "base64"),
@@ -1623,5 +1652,48 @@ describe("tool images before the next user message", () => {
 		);
 		expect(prepared.map((m) => m.role)).toEqual(["user", "assistant", "tool", "user"]);
 		expect(JSON.stringify(prepared[3])).toContain("data:image/png;base64,AAAA");
+	});
+});
+
+describe("queued user messages in replay", () => {
+	const QUEUED_TEXT =
+		"[The user sent this while you were working.]\n<user_message>\nuse Lyon too\n</user_message>";
+
+	it("appends what the user sent mid-turn to the result it followed, after any event", async () => {
+		const history: HistoryMessage[] = [
+			user("u0", "weather?"),
+			{
+				id: "a0",
+				from: "assistant",
+				content: "Both are sunny.",
+				contentShape: 2,
+				updates: [
+					callUpdate("w1", "get_weather", { city: "Paris" }),
+					resultUpdate("w1", "get_weather", "18°C, sunny"),
+					{
+						type: MessageUpdateType.QueuedInput,
+						inputs: [{ id: "q1", text: "use Lyon too", at: 0 }],
+						text: QUEUED_TEXT,
+						afterToolUuid: "w1",
+					},
+					callUpdate("w2", "get_weather", { city: "Lyon" }),
+					resultUpdate("w2", "get_weather", "20°C, sunny"),
+				],
+			},
+		];
+		const replayed = await prepareMessagesWithFiles(history, imageProcessor, false, {
+			replayToolHistory: true,
+		});
+
+		expect(replayed.map((m) => m.role)).toEqual([
+			"user",
+			"assistant",
+			"tool",
+			"assistant",
+			"tool",
+			"assistant",
+		]);
+		expect(textOf(replayed[2])).toBe(`18°C, sunny\n\n${QUEUED_TEXT}`);
+		expect(textOf(replayed[4])).toBe("20°C, sunny");
 	});
 });

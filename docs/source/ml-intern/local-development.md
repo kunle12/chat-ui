@@ -6,7 +6,7 @@ ML Intern is a mode built into Chat UI. When it's on, a conversation:
 
 - runs on a fixed set of tool-capable models
 - connects to the Hugging Face MCP server with the Hub's `intern` tool set
-- gets extra built-in tools: planning, research, versioned script files, sandboxes, Trackio dashboards, and waiting on Jobs
+- gets extra built-in tools: planning, research, versioned script files, sandboxes, Trackio dashboards, gr.Workflow Spaces, and waiting on Jobs
 - carries a compute budget that the server enforces on every Job and sandbox it launches
 
 ## Prerequisites
@@ -28,9 +28,10 @@ MongoDB is optional. If `MONGODB_URL` isn't set, Chat UI starts an in-memory dat
    - `read-mcp`
    - `read-billing`
    - `jobs`
+   - `gated-repos`
    - `contribute-repos` (optional)
 
-   `jobs` is required: without it, every Job submission returns 403. `contribute-repos` lets ML Intern deploy to Spaces, and it can only update the Spaces it created. `read-billing` lists the organizations and resource groups a user can bill to.
+   `jobs` is required: without it, every Job submission returns 403. `contribute-repos` lets ML Intern deploy to Spaces, and it can only update the Spaces it created. `gated-repos` lets ML Intern download gated models and datasets the user has been granted access to. `read-billing` lists the organizations and resource groups a user can bill to.
 
 4. Note the app's client ID and secret.
 
@@ -46,7 +47,7 @@ OPENAI_API_KEY=hf_***
 # Sign in with Hugging Face (Step 1)
 OPENID_CLIENT_ID=<client id>
 OPENID_CLIENT_SECRET=<client secret>
-OPENID_SCOPES="openid profile inference-api read-mcp read-billing contribute-repos jobs"
+OPENID_SCOPES="openid profile inference-api read-mcp read-billing contribute-repos gated-repos jobs"
 # Send the signed-in user's token to the Hugging Face MCP server
 MCP_FORWARD_HF_USER_TOKEN=true
 
@@ -105,21 +106,22 @@ Several parts of ML Intern have kill switches. Each is on unless set to `false`,
 | `ML_ASSISTANT_SERVICE_EVENTS`           | Waking a waiting turn when a Job or sandbox ends (needs the poller)                                                    |
 | `ML_ASSISTANT_PUSH_CHECKS`              | Checking which repos a finished Job pushed to (needs the poller)                                                       |
 | `ML_ASSISTANT_JOB_LABELS`               | Naming and labelling ML Intern Jobs, and recovering submissions whose reply was lost                                   |
+| `ML_ASSISTANT_WORKFLOWS`                | The `create_workflow` tool, which deploys public gr.Workflow Spaces under the user's account                           |
 
 ## Where the code lives
 
-| Area                                                                      | Location                                                                                                                            |
-| ------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------- |
-| Build flag                                                                | `src/lib/utils/mlAssistantFlag.ts`, `vite.config.ts`                                                                                |
-| Mode, model set and Hub MCP preset                                        | `src/lib/server/mlAssistant.ts`, `src/lib/server/mlAssistantModels.ts`                                                              |
-| System prompt                                                             | `src/lib/server/mlAssistantPrompt.ts`                                                                                               |
-| Built-in tools (plan, research, sandbox, wait, files, Trackio, questions) | `src/lib/server/textGeneration/builtinTools/`                                                                                       |
-| Tool loop and MCP                                                         | `src/lib/server/textGeneration/mcp/`                                                                                                |
-| Jobs, sandboxes and repos the conversation created                        | `src/lib/server/mlRegistry/`                                                                                                        |
-| Versioned script files                                                    | `src/lib/server/mlFiles/`                                                                                                           |
-| Client state                                                              | `src/lib/stores/mlAssistant.svelte.ts`, `src/lib/stores/mlRegistry.svelte.ts`                                                       |
-| UI: switch, status bar, onboarding, side panel                            | `src/lib/components/chat/MlInternPill.svelte`, `MlAssistantStrip.svelte`, `MlInternOnboardingModal.svelte`, `MlRegistryPane.svelte` |
-| Copy, example prompts and preset constants                                | `src/lib/constants/mlAssistant.ts`                                                                                                  |
+| Area                                                                                 | Location                                                                                                                            |
+| ------------------------------------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------- |
+| Build flag                                                                           | `src/lib/utils/mlAssistantFlag.ts`, `vite.config.ts`                                                                                |
+| Mode, model set and Hub MCP preset                                                   | `src/lib/server/mlAssistant.ts`, `src/lib/server/mlAssistantModels.ts`                                                              |
+| System prompt                                                                        | `src/lib/server/mlAssistantPrompt.ts`                                                                                               |
+| Built-in tools (plan, research, sandbox, wait, files, Trackio, workflows, questions) | `src/lib/server/textGeneration/builtinTools/`                                                                                       |
+| Tool loop and MCP                                                                    | `src/lib/server/textGeneration/mcp/`                                                                                                |
+| Jobs, sandboxes and repos the conversation created                                   | `src/lib/server/mlRegistry/`                                                                                                        |
+| Versioned script files                                                               | `src/lib/server/mlFiles/`                                                                                                           |
+| Client state                                                                         | `src/lib/stores/mlAssistant.svelte.ts`, `src/lib/stores/mlRegistry.svelte.ts`                                                       |
+| UI: switch, status bar, onboarding, side panel                                       | `src/lib/components/chat/MlInternPill.svelte`, `MlAssistantStrip.svelte`, `MlInternOnboardingModal.svelte`, `MlRegistryPane.svelte` |
+| Copy, example prompts and preset constants                                           | `src/lib/constants/mlAssistant.ts`                                                                                                  |
 
 ## Testing
 
@@ -136,6 +138,7 @@ npx vitest run src/lib/server/textGeneration/builtinTools
 
 - **No ML Intern switch.** Check that `ML_ASSISTANT_MODE=true` and `ML_ASSISTANT_MODELS` is set, and restart the dev server. The switch only shows in an empty conversation.
 - **Jobs fail with 403.** The OAuth app or `OPENID_SCOPES` is missing `jobs`. Sign out and back in after adding it, so your token carries the new scope.
+- **Downloads from a gated repo fail with 403 after accepting the gate.** The OAuth app or `OPENID_SCOPES` is missing `gated-repos`. The Hub still serves the repo's metadata and README without it, so it looks like the gate wasn't accepted. Sign out and back in after adding it.
 - **ML Intern can't use Hub tools, or acts anonymously.** Make sure you're signed in and `MCP_FORWARD_HF_USER_TOKEN=true` is set. Also check which tools are enabled in your [Hugging Face MCP settings](https://huggingface.co/settings/mcp).
 - **Every launch is refused.** The conversation's compute budget is still $0. Set it from the status bar.
 - **Sign-in redirects fail.** The OAuth app's redirect URI must match `http://localhost:5173/login/callback` exactly, including the port.

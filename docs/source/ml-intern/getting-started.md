@@ -47,6 +47,7 @@ Write what you want done, as specifically as you can. Links and Hub ids help: ty
 - `Reproduce <paper title> (https://huggingface.co/papers/<id>) at small scale and report where the results diverge.`
 - `Finetune @<model-id> on @<dataset-id> and evaluate the checkpoint.`
 - `Build a Gradio demo Space for @<model-id>.`
+- `Compare @<model-a> and @<model-b> for <task> on my inputs.`
 - `Generate a synthetic function-calling dataset and push it to the Hub.`
 - `Evaluate @<model-id> on @<benchmark-dataset-id> and score it.`
 
@@ -75,44 +76,9 @@ While ML Intern works, you can:
   - the scripts it wrote, with every version and the Jobs that ran each one
   - the images its tools returned, such as sample grids and plots
 - **Watch training live.** When a training run logs to [Trackio](https://huggingface.co/docs/trackio), a live metrics dashboard opens in a side panel.
+- **Compare models side by side.** Asked to choose between models, or to feed one model's output into another, ML Intern deploys a public [gr.Workflow](https://www.gradio.app/guides/workflows) Space that runs them on the same input. You can rerun it on your own inputs. Runs bill the inference quota of whoever presses Run, not the conversation's compute budget.
 - **Answer its questions.** ML Intern sometimes asks you to choose between options or confirm a step before it continues.
 - **Resume after a failure.** If a turn fails partway, use **Resume** to continue from where it stopped rather than starting the whole turn again.
-
-## Using your credits outside ML Intern
-
-The same credits and billing work when you use Hugging Face compute directly. For an organization's resource group, pass its namespace and resource group id.
-
-Run a Job from the [`hf` CLI](https://huggingface.co/docs/huggingface_hub/guides/cli):
-
-```bash
-hf jobs run --namespace <org-name> --resource-group-id <resource-group-id> python:3.12 python -c "print('Hello!')"
-```
-
-Or from Python:
-
-```python
-from huggingface_hub import run_job
-
-run_job(
-    image="python:3.12",
-    command=["python", "-c", "print('Hello!')"],
-    namespace="<org-name>",
-    resource_group_id="<resource-group-id>",
-)
-```
-
-Call [Inference Providers](https://huggingface.co/docs/inference-providers) billed to the same group with `bill_to`:
-
-```python
-from huggingface_hub import InferenceClient
-
-client = InferenceClient(bill_to="<resource-group-id>")
-completion = client.chat.completions.create(
-    model="deepseek-ai/DeepSeek-V3-0324",
-    messages=[{"role": "user", "content": "How many 'G's in 'huggingface'?"}],
-)
-print(completion.choices[0].message)
-```
 
 ## Running ML Intern yourself
 

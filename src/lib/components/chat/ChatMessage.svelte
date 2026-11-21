@@ -5,6 +5,7 @@
 	import { usePublicConfig } from "$lib/utils/PublicConfig.svelte";
 	const publicConfig = usePublicConfig();
 	import CopyToClipBoardBtn from "../CopyToClipBoardBtn.svelte";
+	import { splitSlackRequest } from "$lib/utils/slackRequest";
 	import IconLoading from "../icons/IconLoading.svelte";
 	import CarbonRotate360 from "~icons/carbon/rotate-360";
 	// import CarbonDownload from "~icons/carbon/download";
@@ -16,6 +17,8 @@
 	import UploadedFile from "./UploadedFile.svelte";
 	import TrackioViewChip from "./TrackioViewChip.svelte";
 	import { segmentViewText, viewsInText } from "$lib/utils/trackioView";
+	import { quotesInText, segmentQuoteText, type QuoteTextSegment } from "$lib/utils/paper";
+	import PaperQuoteChip from "./PaperQuoteChip.svelte";
 	import { sidePane } from "$lib/stores/sidePane.svelte";
 
 	import MarkdownRenderer from "./MarkdownRenderer.svelte";
@@ -31,9 +34,15 @@
 	import ArtifactCard from "./ArtifactCard.svelte";
 	import ElicitationForm from "./ElicitationForm.svelte";
 	import PlanCard from "./PlanCard.svelte";
+	import MlReviewCard from "./MlReviewCard.svelte";
 	import HarnessEventChip from "./HarnessEventChip.svelte";
+	import QueuedInputBubble from "./QueuedInputBubble.svelte";
 	import { isMessageToolResultUpdate, isMessageToolErrorUpdate } from "$lib/utils/messageUpdates";
-	import type { MessageHarnessEventUpdate, MessagePlanUpdate } from "$lib/types/MessageUpdate";
+	import type {
+		MessageHarnessEventUpdate,
+		MessagePlanUpdate,
+		MessageQueuedInputUpdate,
+	} from "$lib/types/MessageUpdate";
 	import { page } from "$app/state";
 	import ImageLightbox from "./ImageLightbox.svelte";
 	import { stripArtifacts } from "$lib/utils/artifacts";
@@ -42,6 +51,7 @@
 		messageBlocks,
 		THINK_BLOCK_REGEX,
 		type ElicitationBlock,
+		type ReviewBlock,
 		type MessageBlock,
 	} from "$lib/utils/messageBlocks";
 	import { rebuildLegacyContent } from "$lib/utils/messageShape";
@@ -51,6 +61,7 @@
 		loading?: boolean;
 		isAuthor?: boolean;
 		readOnly?: boolean;
+		slackManaged?: boolean;
 		isTapped?: boolean;
 		alternatives?: Message["id"][];
 		editMsdgId?: Message["id"] | null;
@@ -64,6 +75,7 @@
 		loading = false,
 		isAuthor = true,
 		readOnly = false,
+		slackManaged = false,
 		isTapped = $bindable(false),
 		alternatives = [],
 		editMsdgId = $bindable(null),
@@ -82,6 +94,18 @@
 
 	function handleContentClick(e: MouseEvent) {
 		const target = e.target as HTMLElement;
+		// A citation into a paper in the reader: open its tab at the passage.
+		const cite = target.closest?.("a[data-paper-cite]");
+		if (cite instanceof HTMLAnchorElement) {
+			e.preventDefault();
+			e.stopPropagation();
+			const paperId = cite.dataset.paperCite;
+			const page = Number(cite.dataset.page);
+			if (paperId && page >= 1) {
+				sidePane.openPaper(paperId, paperId, { page, quote: cite.dataset.quote });
+			}
+			return;
+		}
 		if (target.tagName === "IMG" && target instanceof HTMLImageElement) {
 			e.preventDefault();
 			e.stopPropagation();
@@ -160,7 +184,9 @@
 		| { kind: "artifact"; op: ArtifactOperation; opIndex: number }
 		| ({ kind: "elicitation" } & Omit<ElicitationBlock, "type">)
 		| { kind: "plan"; update: MessagePlanUpdate }
+		| ({ kind: "review" } & Omit<ReviewBlock, "type">)
 		| { kind: "harnessEvent"; update: MessageHarnessEventUpdate }
+		| { kind: "queuedInput"; update: MessageQueuedInputUpdate }
 		| { kind: "notice"; text: string };
 
 	// The live turn's park, rendered as a countdown from its ABSOLUTE deadline
@@ -208,9 +234,16 @@
 				// Never folded into the collapsible summary: the plan stays visible.
 				flush();
 				units.push({ kind: "plan", update: block.update });
+			} else if (block.type === "review") {
+				// never folded into the summary, the review waits on the user
+				flush();
+				units.push({ kind: "review", request: block.request, resolved: block.resolved });
 			} else if (block.type === "harnessEvent") {
 				flush();
 				units.push({ kind: "harnessEvent", update: block.update });
+			} else if (block.type === "queuedInput") {
+				flush();
+				units.push({ kind: "queuedInput", update: block.update });
 			} else if (block.type === "notice") {
 				flush();
 				units.push({ kind: "notice", text: block.text });
@@ -248,7 +281,8 @@
 				block.type === "think" ||
 				block.type === "tool" ||
 				block.type === "elicitation" ||
-				block.type === "plan"
+				block.type === "plan" ||
+				block.type === "review"
 		);
 	});
 
@@ -275,12 +309,27 @@
 
 	let editMode = $derived(editMsdgId === message.id);
 
-	let contentSegments = $derived(
-		segmentViewText(message.content.trim(), message.dashboardViews ?? [])
+	let slackParts = $derived(
+		message.from === "user" && slackManaged ? splitSlackRequest(message.content) : undefined
 	);
+	let displayContent = $derived(slackParts?.request ?? message.content);
+	let contentSegments = $derived(
+		segmentViewText(displayContent.trim(), message.dashboardViews ?? []).flatMap<
+			ReturnType<typeof segmentViewText>[number] | QuoteTextSegment
+		>((segment) =>
+			segment.kind === "text"
+				? segmentQuoteText(segment.text, message.paperQuotes ?? [])
+				: [segment]
+		)
+	);
+	let unplacedQuotes = $derived.by(() => {
+		const quotes = message.paperQuotes ?? [];
+		const placed = quotesInText(displayContent, quotes);
+		return quotes.filter((q) => !placed.includes(q));
+	});
 	let unplacedViews = $derived.by(() => {
 		const views = message.dashboardViews ?? [];
-		const placed = viewsInText(message.content, views);
+		const placed = viewsInText(displayContent, views);
 		return views.filter((v) => !placed.includes(v));
 	});
 	$effect(() => {
@@ -359,6 +408,7 @@
 						{:else if block.type === "elicitation"}
 							<div data-exclude-from-copy class={processBlockClasses}>
 								<ElicitationForm
+									{readOnly}
 									conversationId={page.params.id ?? ""}
 									request={block.request}
 									expiresAt={block.expiresAt}
@@ -369,9 +419,20 @@
 							<div data-exclude-from-copy>
 								<PlanCard update={block.update} />
 							</div>
+						{:else if block.type === "review"}
+							<MlReviewCard
+								request={block.request}
+								resolved={block.resolved}
+								conversationId={page.params.id ?? ""}
+								interactive={isAuthor}
+							/>
 						{:else if block.type === "harnessEvent"}
 							<div data-exclude-from-copy class={processBlockClasses}>
 								<HarnessEventChip update={block.update} />
+							</div>
+						{:else if block.type === "queuedInput"}
+							<div data-exclude-from-copy class={processBlockClasses}>
+								<QueuedInputBubble update={block.update} {slackManaged} />
 							</div>
 						{:else if block.type === "notice"}
 							{@render notice(block.text)}
@@ -410,6 +471,7 @@
 						{:else if unit.kind === "elicitation"}
 							<div data-exclude-from-copy class={processBlockClasses}>
 								<ElicitationForm
+									{readOnly}
 									conversationId={page.params.id ?? ""}
 									request={unit.request}
 									expiresAt={unit.expiresAt}
@@ -420,9 +482,20 @@
 							<div data-exclude-from-copy>
 								<PlanCard update={unit.update} />
 							</div>
+						{:else if unit.kind === "review"}
+							<MlReviewCard
+								request={unit.request}
+								resolved={unit.resolved}
+								conversationId={page.params.id ?? ""}
+								interactive={isAuthor}
+							/>
 						{:else if unit.kind === "harnessEvent"}
 							<div data-exclude-from-copy class={processBlockClasses}>
 								<HarnessEventChip update={unit.update} />
+							</div>
+						{:else if unit.kind === "queuedInput"}
+							<div data-exclude-from-copy class={processBlockClasses}>
+								<QueuedInputBubble update={unit.update} {slackManaged} />
 							</div>
 						{:else if unit.kind === "notice"}
 							{@render notice(unit.text)}
@@ -452,7 +525,7 @@
 					reason={waitingState.reason}
 					conversationId={page.params.id ?? ""}
 					messageId={message.id}
-					canWake={isAuthor && !readOnly}
+					canWake={isAuthor && (!readOnly || slackManaged)}
 				/>
 			{/if}
 		</div>
@@ -518,16 +591,18 @@
 						value={contentWithoutThink}
 						iconClassNames="text-xs"
 					/>
-					<button
-						class="btn rounded-xs p-1 text-xs text-gray-400 hover:text-gray-500 focus:ring-0 dark:text-gray-400 dark:hover:text-gray-300"
-						title="Retry"
-						type="button"
-						onclick={() => {
-							onretry?.({ id: message.id });
-						}}
-					>
-						<CarbonRotate360 />
-					</button>
+					{#if !readOnly}
+						<button
+							class="btn rounded-xs p-1 text-xs text-gray-400 hover:text-gray-500 focus:ring-0 dark:text-gray-400 dark:hover:text-gray-300"
+							title="Retry"
+							type="button"
+							onclick={() => {
+								onretry?.({ id: message.id });
+							}}
+						>
+							<CarbonRotate360 />
+						</button>
+					{/if}
 					{#if alternatives.length > 1 && editMsdgId === null}
 						<Alternatives
 							{message}
@@ -575,6 +650,34 @@
 				</div>
 			{/if}
 
+			{#if unplacedQuotes.length}
+				<div class="flex flex-wrap gap-1.5 px-5" data-exclude-from-copy>
+					{#each unplacedQuotes as quote, index (quote.paperId + quote.page + index)}
+						<PaperQuoteChip
+							{quote}
+							onopen={() =>
+								sidePane.openPaper(quote.paperId, quote.title ?? quote.paperId, {
+									page: quote.page,
+									quote: quote.text,
+								})}
+						/>
+					{/each}
+				</div>
+			{/if}
+
+			{#if slackParts?.context}
+				<details class="px-5 text-sm text-gray-400 dark:text-gray-500" data-exclude-from-copy>
+					<summary
+						class="w-fit cursor-pointer select-none hover:text-gray-500 dark:hover:text-gray-400"
+						>Slack context</summary
+					>
+					<p
+						class="mt-2 scrollbar-custom max-h-80 overflow-y-auto rounded-lg border border-gray-100 p-3 text-xs wrap-break-word whitespace-pre-wrap dark:border-gray-800"
+					>
+						{slackParts.context}
+					</p>
+				</details>
+			{/if}
 			<div class="flex w-full flex-row flex-nowrap">
 				{#if !editMode}
 					<p
@@ -588,6 +691,15 @@
 											segment.view.dashboardUrl,
 											segment.view.project,
 											segment.view.viewUrl
+										)}
+								/>{:else if segment.kind === "quote"}<PaperQuoteChip
+									quote={segment.quote}
+									inline
+									onopen={() =>
+										sidePane.openPaper(
+											segment.quote.paperId,
+											segment.quote.title ?? segment.quote.paperId,
+											{ page: segment.quote.page, quote: segment.quote.text }
 										)}
 								/>{:else}{segment.text}{/if}{/each}
 					</p>
@@ -644,20 +756,22 @@
 					/>
 				{/if}
 				{#if (alternatives.length > 1 && editMsdgId === null) || (!loading && !editMode)}
-					<button
-						class="hidden h-5 cursor-pointer items-center gap-1 rounded-md px-1.5 py-0.5 text-xs text-gray-400 group-hover:flex hover:flex hover:bg-gray-100 hover:text-gray-500 lg:-right-2 dark:text-gray-400 dark:hover:bg-gray-800 dark:hover:text-gray-300 {isTapped
-							? '[@media(hover:none)]:flex'
-							: ''}"
-						title="Edit"
-						type="button"
-						onclick={() => {
-							if (requireAuthUser()) return;
-							editMsdgId = message.id;
-						}}
-					>
-						<CarbonPen />
-						Edit
-					</button>
+					{#if !readOnly}
+						<button
+							class="hidden h-5 cursor-pointer items-center gap-1 rounded-md px-1.5 py-0.5 text-xs text-gray-400 group-hover:flex hover:flex hover:bg-gray-100 hover:text-gray-500 lg:-right-2 dark:text-gray-400 dark:hover:bg-gray-800 dark:hover:text-gray-300 {isTapped
+								? '[@media(hover:none)]:flex'
+								: ''}"
+							title="Edit"
+							type="button"
+							onclick={() => {
+								if (requireAuthUser()) return;
+								editMsdgId = message.id;
+							}}
+						>
+							<CarbonPen />
+							Edit
+						</button>
+					{/if}
 					<button
 						class="hidden h-5 cursor-pointer items-center gap-1 rounded-md px-1.5 py-0.5 text-xs group-hover:flex hover:flex hover:bg-gray-100 lg:-right-2 dark:hover:bg-gray-800 {isTapped
 							? '[@media(hover:none)]:flex'
@@ -669,10 +783,10 @@
 						onclick={async () => {
 							try {
 								if (window.isSecureContext && navigator.clipboard) {
-									await navigator.clipboard.writeText(message.content);
+									await navigator.clipboard.writeText(displayContent);
 								} else {
 									const textArea = document.createElement("textarea");
-									textArea.value = message.content;
+									textArea.value = displayContent;
 									// Off-screen + preventScroll so the legacy copy path
 									// (insecure contexts) can't scroll-jump or shift layout.
 									textArea.style.cssText = "position: fixed; opacity: 0;";

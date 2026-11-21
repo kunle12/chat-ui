@@ -17,6 +17,8 @@ import type { ObjectId } from "mongodb";
 import { isValidJsonObject } from "$lib/server/textGeneration/mcp/toolInvocation";
 import { ROUNDS_SHAPE, rebuildLegacyContent, toolRounds } from "$lib/utils/messageShape";
 import { withHarnessEvent } from "./harnessEvent";
+import { withJobFailedNote } from "../builtinTools/jobCheckPrompt";
+import { toToolCallId } from "./toolCallId";
 import {
 	answeredQuestion,
 	CHARS_PER_TOKEN,
@@ -40,6 +42,7 @@ import {
 	type ResolvedToolImage,
 	type ToolImageReader,
 } from "./toolImages";
+import { unescapeThinkTags } from "$lib/utils/escapeThinkTags";
 
 type ChatMessageParam = OpenAI.Chat.Completions.ChatCompletionMessageParam;
 
@@ -68,23 +71,6 @@ function legacyBudgetChars(contextLengthTokens?: number, maxOutputTokens?: numbe
 		maxOutputTokens && maxOutputTokens > 0 ? maxOutputTokens : DEFAULT_OUTPUT_TOKENS;
 	const usableTokens = Math.max(0, contextLengthTokens - outputReserve - PROMPT_OVERHEAD_TOKENS);
 	return Math.min(LEGACY_HISTORY_BUDGET_CHARS, usableTokens * CHARS_PER_TOKEN);
-}
-
-/**
- * Normalize a persisted update uuid into a provider-safe tool_call_id.
- * Mistral-family chat templates require exactly nine alphanumeric characters,
- * a shape every other provider also accepts; the persisted uuid is only a
- * correlation key, so the id just has to pair calls with results consistently.
- */
-function toToolCallId(uuid: string, used: Set<string>): string {
-	const alnum = uuid.replace(/[^a-zA-Z0-9]/g, "") || "toolcall0";
-	let candidate = (alnum + "0".repeat(9)).slice(0, 9);
-	for (let salt = 1; used.has(candidate); salt += 1) {
-		const suffix = String(salt);
-		candidate = (alnum + "0".repeat(9)).slice(0, 9 - suffix.length) + suffix;
-	}
-	used.add(candidate);
-	return candidate;
 }
 
 const isToolResultUpdate = (u: MessageUpdate): u is MessageToolResultUpdate =>
@@ -138,7 +124,7 @@ interface TurnRound {
 	calls: MessageToolCallUpdate[];
 	/** byte exact, see splitReasoning */
 	reasoning: string;
-	/** visible text streamed before the calls, trimmed */
+	/** visible text streamed before the calls, byte exact like the live loop sent it */
 	content: string;
 }
 
@@ -153,15 +139,17 @@ function turnRounds(message: EndpointMessage): {
 	const rounds = toolRounds(message.updates ?? []).map(({ calls }) => ({
 		calls,
 		reasoning: calls.find((u) => u.reasoning?.trim())?.reasoning ?? "",
-		content: (calls.find((u) => u.content?.trim())?.content ?? "").trim(),
+		content: calls.find((u) => u.content?.trim())?.content ?? "",
 	}));
-	if (message.contentShape === ROUNDS_SHAPE) {
-		return {
-			rounds,
-			final: { content: message.content.trim(), reasoning: message.reasoning ?? "" },
-		};
-	}
-	return { rounds, final: legacyFinalAnswer(message, rounds) };
+	const final =
+		message.contentShape === ROUNDS_SHAPE
+			? { content: message.content.trim(), reasoning: message.reasoning ?? "" }
+			: legacyFinalAnswer(message, rounds);
+	// stored reasoning keeps literal think tags escaped, the provider gets its own bytes back
+	return {
+		rounds: rounds.map((round) => ({ ...round, reasoning: unescapeThinkTags(round.reasoning) })),
+		final: { ...final, reasoning: unescapeThinkTags(final.reasoning) },
+	};
 }
 
 /** the original shape keeps every round think block and preamble in content too */
@@ -201,10 +189,11 @@ function legacyFinalAnswer(
 		// that."): rounds are processed oldest-first, matching the
 		// chronological order text was concatenated into `message.content`, so
 		// removing a matched prefix keeps the remainder correctly ordered for
-		// the final message. Trimmed on both sides (persistence trims too)
-		// because `remainingVisible` comes from splitReasoning trim-normalized;
-		// visible text has no byte-exactness requirement, unlike reasoning.
-		if (round.content && remainingVisible.startsWith(round.content)) {
+		// the final message. Trimmed only to match, because `remainingVisible`
+		// comes from splitReasoning trim-normalized; the round itself still
+		// replays its preamble byte exact.
+		const preamble = round.content.trim();
+		if (preamble && remainingVisible.startsWith(preamble)) {
 			// Prefix-only, deliberately: rounds consume the visible text in
 			// chronological order, so a streamed preamble is always the next
 			// prefix. A persisted preamble that is NOT a prefix was never merged
@@ -213,7 +202,7 @@ function legacyFinalAnswer(
 			// indexOf match could only hit identical text belonging to the final
 			// answer — removing that would reorder the conversation. The failure
 			// mode of not matching is mild duplication, which is safer.
-			remainingVisible = remainingVisible.slice(round.content.length).trimStart();
+			remainingVisible = remainingVisible.slice(preamble.length).trimStart();
 		}
 	}
 	return { content: remainingVisible.trim(), reasoning: remainingParts.join("\n") };
@@ -274,7 +263,10 @@ function replayAssistantTurn(
 			);
 		} else if (isToolErrorUpdate(update)) {
 			outputsByUuid.set(update.uuid, `Error: ${update.message}`);
-		} else if (update.type === MessageUpdateType.HarnessEvent) {
+		} else if (
+			update.type === MessageUpdateType.HarnessEvent ||
+			update.type === MessageUpdateType.QueuedInput
+		) {
 			const texts = eventsByUuid.get(update.afterToolUuid) ?? [];
 			eventsByUuid.set(update.afterToolUuid, [...texts, update.text]);
 		}
@@ -351,7 +343,7 @@ function replayAssistantTurn(
 				// the note and the event go on after the cap, a long output never cuts them
 				content: (eventsByUuid.get(u.uuid) ?? []).reduce(
 					withHarnessEvent,
-					withImageNote(capped, notes.get(toolCallId))
+					withImageNote(withJobFailedNote(u.call.name, capped), notes.get(toolCallId))
 				),
 			});
 		}
@@ -542,7 +534,7 @@ async function prepareEntries(
 				};
 			}
 			const { visible, parts } = splitReasoning(legacy.content, legacy.reasoning);
-			const reasoning = parts.join("\n");
+			const reasoning = unescapeThinkTags(parts.join("\n"));
 			if (!wantsReasoning || reasoning.length === 0) {
 				// Either nothing to attach, or attachment is disabled/gated:
 				// either way `visible` (think-stripped) is the correct shape,

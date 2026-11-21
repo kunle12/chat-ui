@@ -3,6 +3,7 @@ import {
 	ML_ASSISTANT_BUDGET_RULES,
 	mlAssistantPreprompt,
 	mlAssistantSessionContext,
+	mlAssistantTurnContext,
 } from "$lib/server/mlAssistantPrompt";
 import type { MlBudget } from "$lib/types/Conversation";
 import { formatMicroUsd, remainingMicroUsd } from "$lib/utils/mlBudget";
@@ -24,12 +25,12 @@ export interface PrepromptInput {
 	supportsArtifacts?: boolean;
 	/** Signed-in user's Hub username. The preset's namespace rule reads it back. */
 	username?: string;
+	/** Default output namespace, independent of the compute payer. */
+	publishNamespace?: string;
 	/** IANA zone from the request, so the stamped time is the user's. */
 	timezone?: string;
 	/** Injectable clock, for tests. */
 	now?: Date;
-	/** The conversation's compute budget; presence turns on the budget rules. */
-	budget?: MlBudget;
 	/** Organization namespace the mode's compute runs under; stamped as BillTo. */
 	billTo?: string;
 	/** Resource group within BillTo used for cost attribution. */
@@ -53,9 +54,9 @@ export function resolvePreprompt({
 	artifactsOverride,
 	supportsArtifacts,
 	username,
+	publishNamespace,
 	timezone,
 	now,
-	budget,
 	billTo,
 	billingResourceGroup,
 }: PrepromptInput): string | undefined {
@@ -69,22 +70,47 @@ export function resolvePreprompt({
 	const artifacts = mlAssistant || (artifactsOverride ?? supportsArtifacts);
 	const resolved = artifacts ? injectArtifactsPrompt(base) : base;
 	if (!mlAssistant) return resolved;
-	// The mode is always budget-gated; a conversation without a stored budget is
-	// a zero budget, and the rules — including how to ask for a grant — must
-	// reach the model exactly then.
-	const effective = budget ?? { totalMicroUsd: 0, spentMicroUsd: 0, reservations: [] };
 	// Stamped last, after the artifacts prompt, because the preset reads the User
 	// value back out of it — and stamped here rather than onto the tool preprompt
 	// so it still reaches the model on the plain generation path, which has none.
 	return `${resolved}\n\n${ML_ASSISTANT_BUDGET_RULES}\n\n${mlAssistantSessionContext({
 		username,
+		publishNamespace,
+		timezone,
+		now,
+		billTo,
+		billingResourceGroup,
+	})}`;
+}
+
+/**
+ * What the mode stamps at the end of the user's latest message for one turn: the
+ * values that change between requests, kept out of the system prompt so the
+ * prefix a provider caches survives them. Undefined outside the mode.
+ */
+export function resolveTurnContext({
+	mlAssistant,
+	timezone,
+	now,
+	budget,
+}: {
+	mlAssistant: boolean;
+	timezone?: string;
+	now?: Date;
+	/** The conversation's compute budget. */
+	budget?: MlBudget;
+}): string | undefined {
+	if (!mlAssistant) return undefined;
+	// The mode is always budget-gated; a conversation without a stored budget is
+	// a zero budget, and the rules — including how to ask for a grant — must
+	// reach the model exactly then.
+	const effective = budget ?? { totalMicroUsd: 0, spentMicroUsd: 0, reservations: [] };
+	return mlAssistantTurnContext({
 		timezone,
 		now,
 		budget: {
 			remaining: formatMicroUsd(remainingMicroUsd(effective)),
 			total: formatMicroUsd(effective.totalMicroUsd),
 		},
-		billTo,
-		billingResourceGroup,
-	})}`;
+	});
 }

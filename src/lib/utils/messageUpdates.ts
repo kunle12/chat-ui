@@ -1,5 +1,6 @@
 import type { MessageFile } from "$lib/types/Message";
 import type { TrackioDashboardView } from "$lib/utils/trackioView";
+import type { PaperQuote } from "$lib/utils/paper";
 import {
 	type MessageUpdate,
 	type MessageToolUpdate,
@@ -12,7 +13,9 @@ import {
 	type MessageElicitationResolvedUpdate,
 	type MessagePlanUpdate,
 	type MessageHarnessEventUpdate,
+	type MessageQueuedInputUpdate,
 	type MessageNoticeUpdate,
+	type MessageReviewUpdate,
 	MessageUpdateType,
 	MessageUpdateStatus,
 	MessageToolUpdateType,
@@ -34,6 +37,7 @@ type MessageUpdateRequestOptions = {
 	generationId?: string;
 	files?: MessageFile[];
 	dashboardViews?: TrackioDashboardView[];
+	paperQuotes?: PaperQuote[];
 	// Optional: pass selected MCP server names (client-side selection)
 	selectedMcpServerNames?: string[];
 	// Optional: pass selected MCP server configs (for custom client-defined servers)
@@ -84,6 +88,7 @@ export async function fetchMessageUpdates(
 		selectedMcpServers: opts.selectedMcpServers,
 		timezone: opts.timezone,
 		...(opts.dashboardViews?.length ? { dashboardViews: opts.dashboardViews } : {}),
+		...(opts.paperQuotes?.length ? { paperQuotes: opts.paperQuotes } : {}),
 	});
 
 	opts.files?.forEach((file) => {
@@ -406,12 +411,19 @@ export const isMessageElicitationResolvedUpdate = (
 ): update is MessageElicitationResolvedUpdate =>
 	isMessageElicitationUpdate(update) && update.subtype === MessageElicitationUpdateType.Resolved;
 
+export const isMessageReviewUpdate = (update: MessageUpdate): update is MessageReviewUpdate =>
+	update.type === MessageUpdateType.Review;
+
 export const isMessagePlanUpdate = (update: MessageUpdate): update is MessagePlanUpdate =>
 	update.type === MessageUpdateType.Plan;
 
 export const isMessageHarnessEventUpdate = (
 	update: MessageUpdate
 ): update is MessageHarnessEventUpdate => update.type === MessageUpdateType.HarnessEvent;
+
+export const isMessageQueuedInputUpdate = (
+	update: MessageUpdate
+): update is MessageQueuedInputUpdate => update.type === MessageUpdateType.QueuedInput;
 
 export const isMessageNoticeUpdate = (update: MessageUpdate): update is MessageNoticeUpdate =>
 	update.type === MessageUpdateType.Notice;

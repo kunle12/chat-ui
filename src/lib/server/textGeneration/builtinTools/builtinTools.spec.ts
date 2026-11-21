@@ -37,6 +37,7 @@ describe("getEnabledBuiltinTools", () => {
 	it("offers the preset's builtin tools in an ML Assistant conversation", () => {
 		expect(toolNames({ _id: new ObjectId(), mlAssistant: true })).toEqual([
 			"ask_user_question",
+			"request_review",
 			"update_plan",
 			"wait",
 			"research",
@@ -44,6 +45,9 @@ describe("getEnabledBuiltinTools", () => {
 			"check_job",
 			"create_trackio",
 			"read_trackio",
+			"open_paper",
+			"read_paper",
+			"create_workflow",
 			"write_file",
 			"edit_file",
 			"read_file",

@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { ObjectId } from "mongodb";
 import {
 	MessageToolUpdateType,
@@ -10,6 +10,7 @@ import { ML_ASSISTANT_MIN_COMPLETION_TOKENS } from "$lib/constants/mlAssistant";
 import { RETRY_BACKOFF_MS } from "$lib/server/textGeneration/utils/upstreamRetry";
 import { APIConnectionError, BadRequestError } from "openai";
 import type { McpFlowResult, RunMcpFlowContext } from "./runMcpFlow";
+import { escapeThinkTags, unescapeThinkTags } from "$lib/utils/escapeThinkTags";
 
 // ---------------------------------------------------------------------------
 // Harness
@@ -47,12 +48,20 @@ const mocks = vi.hoisted(() => ({
 	listMlServices: vi.fn(async (): Promise<unknown[]> => []),
 	listMlArtefacts: vi.fn(async (): Promise<unknown[]> => []),
 	listMlFiles: vi.fn(async (): Promise<unknown[]> => []),
+	listOpenReviews: vi.fn(async (): Promise<unknown[]> => []),
 	markServicesReported: vi.fn(async () => undefined),
 	pendingHarnessEvent: vi.fn<(conversationId: unknown, afterToolUuid: string) => Promise<unknown>>(
 		async () => undefined
 	),
 	markHarnessEventDelivered: vi.fn(async () => undefined),
+	takeQueuedInputs: vi.fn<
+		(conversationId: unknown, messageId: string, afterToolUuid: string) => Promise<unknown>
+	>(async () => undefined),
 	prepareHistory: vi.fn(),
+	/** what the flow built its client with, its fetch included */
+	clientOptions: undefined as { fetch?: typeof fetch } | undefined,
+	/** the model Omni resolves to, when a test routes through it */
+	routedTarget: undefined as unknown,
 }));
 
 type HistoryOptionsArg = { attachments?: "budget" | "minimal" };
@@ -72,6 +81,9 @@ vi.mock("openai", async (importOriginal) => ({
 	...(await importOriginal<typeof import("openai")>()),
 	OpenAI: class {
 		chat = { completions: { create: mocks.create } };
+		constructor(options: { fetch?: typeof fetch }) {
+			mocks.clientOptions = options;
+		}
 	},
 }));
 
@@ -106,7 +118,7 @@ vi.mock("$lib/server/mcp/tools", () => ({
 vi.mock("./routerResolution", () => ({
 	resolveRouterTarget: async ({ model }: { model: unknown }) => ({
 		runMcp: true,
-		targetModel: model,
+		targetModel: mocks.routedTarget ?? model,
 	}),
 }));
 
@@ -141,12 +153,20 @@ vi.mock("$lib/server/mlRegistry/midTurn", () => ({
 	pendingHarnessEvent: mocks.pendingHarnessEvent,
 	markHarnessEventDelivered: mocks.markHarnessEventDelivered,
 }));
+vi.mock("$lib/server/queuedInputs/deliver", () => ({
+	takeQueuedInputs: mocks.takeQueuedInputs,
+}));
 vi.mock("$lib/server/mlFiles/store", async (importOriginal) => ({
 	...(await importOriginal<typeof import("$lib/server/mlFiles/store")>()),
 	listMlFiles: mocks.listMlFiles,
 }));
+vi.mock("$lib/server/mlReviews/store", async (importOriginal) => ({
+	...(await importOriginal<typeof import("$lib/server/mlReviews/store")>()),
+	listOpenReviews: mocks.listOpenReviews,
+}));
 
 const { runMcpFlow } = await import("./runMcpFlow");
+const { toToolCallId } = await import("../utils/toolCallId");
 const { config } = await import("$lib/server/config");
 
 type ScriptedCall = { id?: string; name?: string; arguments: string };
@@ -215,7 +235,7 @@ function scriptToolResults(output = "tool ok") {
 	mocks.executeToolCalls.mockImplementation(async function* ({
 		calls,
 	}: {
-		calls: Array<{ id: string; name: string }>;
+		calls: Array<{ id: string; name: string; uuid?: string }>;
 	}) {
 		for (const call of calls) {
 			yield {
@@ -223,7 +243,7 @@ function scriptToolResults(output = "tool ok") {
 				update: {
 					type: MessageUpdateType.Tool,
 					subtype: MessageToolUpdateType.Call,
-					uuid: call.id,
+					uuid: call.uuid ?? call.id,
 					call: { name: call.name, parameters: {} },
 				},
 			};
@@ -263,6 +283,11 @@ async function runFlow(overrides: Partial<Parameters<typeof runMcpFlow>[0]> = {}
 	return { updates, result: step.value as McpFlowResult };
 }
 
+/** The calls the flow handed to the tools on the nth dispatch, with the ids it sends. */
+function dispatched(n = 0): Array<{ id: string; uuid: string; providerId: string }> {
+	return mocks.executeToolCalls.mock.calls[n][0].calls;
+}
+
 /** The messages sent on the nth upstream request (0-indexed). */
 function requestMessages(n: number): ChatCompletionMessageParam[] {
 	return mocks.create.mock.calls[n][0].messages;
@@ -289,7 +314,12 @@ beforeEach(() => {
 	mocks.mapping = { do_thing: { fnName: "do_thing", server: "hf", tool: "do_thing" } };
 	mocks.loadSessionJobLabels.mockClear();
 	mocks.getAbortTime.mockReturnValue(undefined);
-	for (const list of [mocks.listMlServices, mocks.listMlArtefacts, mocks.listMlFiles]) {
+	for (const list of [
+		mocks.listMlServices,
+		mocks.listMlArtefacts,
+		mocks.listMlFiles,
+		mocks.listOpenReviews,
+	]) {
 		list.mockReset();
 		list.mockResolvedValue([]);
 	}
@@ -299,6 +329,8 @@ beforeEach(() => {
 	mocks.pendingHarnessEvent.mockResolvedValue(undefined);
 	mocks.markHarnessEventDelivered.mockReset();
 	mocks.markHarnessEventDelivered.mockResolvedValue(undefined);
+	mocks.takeQueuedInputs.mockReset();
+	mocks.takeQueuedInputs.mockResolvedValue(undefined);
 	mocks.prepareHistory.mockReset();
 	mocks.prepareHistory.mockImplementation(plainHistory);
 	scriptToolResults();
@@ -332,9 +364,11 @@ describe("runMcpFlow", () => {
 		expect(result).toBe("completed");
 		expect(mocks.executeToolCalls).toHaveBeenCalledTimes(1);
 		// The call the model made has to reach the tool intact...
-		expect(mocks.executeToolCalls.mock.calls[0][0].calls).toEqual([
-			{ id: "call_1", name: "do_thing", arguments: '{"a":1}' },
-		]);
+		const [call] = dispatched();
+		expect(call).toMatchObject({ name: "do_thing", arguments: '{"a":1}', providerId: "call_1" });
+		// ...under the id replay derives from the same uuid on later turns, so the
+		// round is sent with the same bytes then and the provider's cache still holds.
+		expect(call.id).toBe(toToolCallId(call.uuid, new Set()));
 
 		// ...and the follow-up has to carry the assistant's tool_calls *and* the matching
 		// results. An assistant message without its tool_calls leaves the tool messages
@@ -343,12 +377,12 @@ describe("runMcpFlow", () => {
 		expect(followUp.at(-2)).toMatchObject({
 			role: "assistant",
 			tool_calls: [
-				{ id: "call_1", type: "function", function: { name: "do_thing", arguments: '{"a":1}' } },
+				{ id: call.id, type: "function", function: { name: "do_thing", arguments: '{"a":1}' } },
 			],
 		});
 		expect(followUp.at(-1)).toEqual({
 			role: "tool",
-			tool_call_id: "call_1",
+			tool_call_id: call.id,
 			content: "the tool output",
 		});
 	});
@@ -452,8 +486,8 @@ describe("runMcpFlow truncated tool calls", () => {
 
 		expect(result).toBe("completed");
 		expect(mocks.executeToolCalls).toHaveBeenCalledTimes(1);
-		expect(mocks.executeToolCalls.mock.calls[0][0].calls).toEqual([
-			{ id: "call_1", name: "do_thing", arguments: '{"a":1}' },
+		expect(dispatched()).toEqual([
+			expect.objectContaining({ name: "do_thing", arguments: '{"a":1}', providerId: "call_1" }),
 		]);
 	});
 
@@ -669,6 +703,36 @@ describe("runMcpFlow in-loop reasoning echo", () => {
 		expect(toolCallMessage(1)?.reasoning_content).toBe("I need the tool.");
 	});
 
+	it("escapes literal think tags everywhere but the echo", async () => {
+		const reasoning = "Qwen3 skips thinking after <think></think>, so <";
+		scriptRounds([
+			{
+				deltas: [
+					{ reasoning: "Qwen3 skips thinking after <thi" },
+					{ reasoning: "nk></think>, so <" },
+					{ content: "Checking." },
+					{
+						tool_calls: [
+							{ index: 0, id: "call_1", function: { name: "do_thing", arguments: "{}" } },
+						],
+					},
+				],
+				finishReason: "tool_calls",
+			},
+			{ content: "done" },
+		]);
+
+		const { updates } = await runFlow();
+
+		const streamed = streamedText(updates);
+		expect(streamed.match(/<\/?think>/g)).toEqual(["<think>", "</think>"]);
+		expect(unescapeThinkTags(streamed)).toContain(`<think>${reasoning}</think>Checking.`);
+		// stored like content, so the turn still converts to the rounds shape
+		const stored = mocks.executeToolCalls.mock.calls[0][0].roundReasoning;
+		expect(stored).toBe(escapeThinkTags(reasoning));
+		expect(toolCallMessage(1)?.reasoning_content).toBe(reasoning);
+	});
+
 	it("omits reasoning_content for a blocklisted model", async () => {
 		// Not cosmetic: this family's provider rejects the field outright rather
 		// than ignoring it —
@@ -738,6 +802,7 @@ describe("runMcpFlow offering the question tool", () => {
 		expect(result).toBe("completed");
 		expect(toolNames()).toEqual([
 			"ask_user_question",
+			"request_review",
 			"update_plan",
 			"wait",
 			"research",
@@ -745,6 +810,9 @@ describe("runMcpFlow offering the question tool", () => {
 			"check_job",
 			"create_trackio",
 			"read_trackio",
+			"open_paper",
+			"read_paper",
+			"create_workflow",
 			"write_file",
 			"edit_file",
 			"read_file",
@@ -768,7 +836,7 @@ describe("runMcpFlow offering the plan tool", () => {
 		).map((t) => t.function.name);
 
 	const mlConv = (extra: Record<string, unknown> = {}) =>
-		({ _id: new ObjectId(), mlAssistant: true, ...extra }) as unknown as Parameters<
+		({ _id: new ObjectId(), mlAssistant: true, messages: [], ...extra }) as unknown as Parameters<
 			typeof runMcpFlow
 		>[0]["conv"];
 
@@ -819,6 +887,7 @@ describe("runMcpFlow offering the plan tool", () => {
 		await runFlow({
 			conv: {
 				_id: new ObjectId(),
+				messages: [],
 				plan: {
 					goal: "Ship the feature",
 					steps: [{ step: "write it", status: "pending" }],
@@ -826,7 +895,7 @@ describe("runMcpFlow offering the plan tool", () => {
 					updatedAt: new Date(),
 				},
 			},
-		} as Partial<Parameters<typeof runMcpFlow>[0]>);
+		} as unknown as Partial<Parameters<typeof runMcpFlow>[0]>);
 
 		const lastUser = requestMessages(0).findLast((m) => m.role === "user");
 		expect(String(lastUser?.content)).not.toContain("CURRENT PLAN");
@@ -1099,13 +1168,14 @@ describe("runMcpFlow mid-turn service events", () => {
 
 		expect(result).toBe("completed");
 		expect(mocks.pendingHarnessEvent).toHaveBeenCalledTimes(1);
-		expect(mocks.pendingHarnessEvent.mock.calls[0][1]).toBe("call_2");
-		expect(harnessUpdates(updates)).toEqual([eventUpdate("call_2")]);
+		const [first, second] = dispatched();
+		expect(mocks.pendingHarnessEvent.mock.calls[0][1]).toBe(second.uuid);
+		expect(harnessUpdates(updates)).toEqual([eventUpdate(second.uuid)]);
 		const next = requestMessages(1);
-		expect(next.at(-2)).toEqual({ role: "tool", tool_call_id: "call_1", content: "tool ok" });
+		expect(next.at(-2)).toEqual({ role: "tool", tool_call_id: first.id, content: "tool ok" });
 		expect(next.at(-1)).toEqual({
 			role: "tool",
-			tool_call_id: "call_2",
+			tool_call_id: second.id,
 			content: `tool ok\n\n${EVENT_TEXT}`,
 		});
 		expect(mocks.markHarnessEventDelivered).toHaveBeenCalledWith(expect.anything(), services);
@@ -1221,6 +1291,89 @@ describe("runMcpFlow mid-turn service events", () => {
 	);
 });
 
+describe("runMcpFlow queued user messages", () => {
+	const inMode = () =>
+		({
+			conv: { _id: new ObjectId(), mlAssistant: true },
+			messageId: "a1",
+		}) as unknown as Partial<Parameters<typeof runMcpFlow>[0]>;
+	const QUEUED_TEXT =
+		"[The user sent this while you were working.]\n<user_message>\nuse lr 1e-4\n</user_message>";
+	const queuedUpdate = (afterToolUuid: string) => ({
+		type: MessageUpdateType.QueuedInput,
+		inputs: [{ id: "q1", text: "use lr 1e-4", at: 0 }],
+		text: QUEUED_TEXT,
+		afterToolUuid,
+	});
+	const queuedUpdates = (updates: MessageUpdate[]) =>
+		updates.filter((u) => u.type === MessageUpdateType.QueuedInput);
+
+	it("reads a queued message into the round's last tool result before the next request", async () => {
+		mocks.takeQueuedInputs.mockImplementationOnce(async (_id, _messageId, uuid) =>
+			queuedUpdate(uuid)
+		);
+		scriptRounds([
+			{
+				toolCalls: [
+					{ id: "call_1", name: "do_thing", arguments: "{}" },
+					{ id: "call_2", name: "do_thing", arguments: "{}" },
+				],
+			},
+			{ content: "switching to 1e-4" },
+		]);
+
+		const { updates, result } = await runFlow(inMode());
+
+		expect(result).toBe("completed");
+		const [, second] = dispatched();
+		expect(mocks.takeQueuedInputs.mock.calls[0].slice(1)).toEqual(["a1", second.uuid]);
+		expect(queuedUpdates(updates)).toEqual([queuedUpdate(second.uuid)]);
+		expect(requestMessages(1).at(-1)).toEqual({
+			role: "tool",
+			tool_call_id: second.id,
+			content: `tool ok\n\n${QUEUED_TEXT}`,
+		});
+	});
+
+	it("puts the message after a harness event of the same round", async () => {
+		mocks.pendingHarnessEvent.mockImplementationOnce(async (_id, uuid) => ({
+			update: {
+				type: MessageUpdateType.HarnessEvent,
+				events: [],
+				text: "[Harness event]",
+				afterToolUuid: uuid,
+			},
+			services: [],
+		}));
+		mocks.takeQueuedInputs.mockImplementationOnce(async (_id, _messageId, uuid) =>
+			queuedUpdate(uuid)
+		);
+		scriptRounds([
+			{ toolCalls: [{ id: "call_1", name: "do_thing", arguments: "{}" }] },
+			{ content: "done" },
+		]);
+
+		await runFlow(inMode());
+
+		expect(requestMessages(1).at(-1)?.content).toBe(`tool ok\n\n[Harness event]\n\n${QUEUED_TEXT}`);
+	});
+
+	it("leaves the queue to the next turn when the model answers without a tool", async () => {
+		scriptRounds([{ content: "the answer" }]);
+		await runFlow(inMode());
+		expect(mocks.takeQueuedInputs).not.toHaveBeenCalled();
+	});
+
+	it("takes nothing outside the mode", async () => {
+		scriptRounds([
+			{ toolCalls: [{ id: "call_1", name: "do_thing", arguments: "{}" }] },
+			{ content: "done" },
+		]);
+		await runFlow({ messageId: "a1" } as Partial<Parameters<typeof runMcpFlow>[0]>);
+		expect(mocks.takeQueuedInputs).not.toHaveBeenCalled();
+	});
+});
+
 describe("runMcpFlow job labels", () => {
 	const inMode = () =>
 		({ conv: { _id: new ObjectId(), mlAssistant: true } }) as unknown as Partial<
@@ -1265,6 +1418,123 @@ describe("runMcpFlow job labels", () => {
 
 		expect(dispatched()).toEqual(submission);
 		expect(mocks.loadSessionJobLabels).not.toHaveBeenCalled();
+	});
+});
+
+describe("answers that leave the turn's plan unfinished", () => {
+	const startedAt = new Date("2026-11-03T00:00:00Z");
+	const turn = (planUpdatedAt: Date, messages?: unknown[]) =>
+		({
+			conv: {
+				_id: new ObjectId(),
+				mlAssistant: true,
+				messages: messages ?? [
+					{ id: "turn", from: "assistant", content: "", createdAt: startedAt },
+				],
+				plan: {
+					goal: "Build the Space",
+					steps: [
+						{ step: "Check repo files", status: "completed" },
+						{ step: "Write app", status: "in_progress" },
+						{ step: "Verify build", status: "pending" },
+					],
+					version: 1,
+					updatedAt: planUpdatedAt,
+				},
+			},
+			messageId: "turn",
+		}) as unknown as Partial<Parameters<typeof runMcpFlow>[0]>;
+	const later = new Date(startedAt.getTime() + 1000);
+
+	// Observed with GLM-class models: reasoning about Qwen's literal empty-think
+	// tags ends it at the provider, and the leftover half-thought arrives as the answer.
+	it("retries once, naming the open steps, instead of finalizing a mid-task stop", async () => {
+		scriptRounds([
+			{ content: "— for non-thinking mode. Actually the template appends" },
+			{ content: "Done: the Space is live." },
+		]);
+
+		const { updates, result } = await runFlow(turn(later));
+
+		expect(result).toBe("completed");
+		expect(mocks.create).toHaveBeenCalledTimes(2);
+		expect(finalAnswer(updates)).toBe("Done: the Space is live.");
+		const retry = requestMessages(1);
+		expect(retry.at(-2)?.role).toBe("assistant");
+		const nudge = String(retry.at(-1)?.content);
+		expect(nudge).toContain('"Write app", "Verify build"');
+		expect(nudge).not.toContain("Check repo files");
+	});
+
+	it("finalizes when the retry stops early again", async () => {
+		scriptRounds([{ content: "first stop" }, { content: "second stop" }]);
+
+		const { updates } = await runFlow(turn(later));
+
+		expect(mocks.create).toHaveBeenCalledTimes(2);
+		expect(finalAnswer(updates)).toBe("second stop");
+	});
+
+	it("lets a turn end with only its running step left open", async () => {
+		scriptRounds([{ content: "All done." }]);
+		const args = turn(later) as { conv: { plan: { steps: Array<{ status: string }> } } };
+		args.conv.plan.steps[2].status = "completed";
+
+		const { updates } = await runFlow(args as Partial<Parameters<typeof runMcpFlow>[0]>);
+
+		expect(mocks.create).toHaveBeenCalledTimes(1);
+		expect(finalAnswer(updates)).toBe("All done.");
+	});
+
+	it("leaves a plan from an earlier turn alone", async () => {
+		scriptRounds([{ content: "a quick answer to a follow-up" }]);
+
+		const { updates } = await runFlow(turn(new Date(startedAt.getTime() - 1000)));
+
+		expect(mocks.create).toHaveBeenCalledTimes(1);
+		expect(finalAnswer(updates)).toBe("a quick answer to a follow-up");
+	});
+
+	it("takes no plan retry after an output-limit cut already had its retry", async () => {
+		scriptRounds([
+			{ content: "<think>long reasoning", finishReason: "length" },
+			{ content: "Concise answer." },
+		]);
+
+		const { updates } = await runFlow(turn(later));
+
+		expect(mocks.create).toHaveBeenCalledTimes(2);
+		expect(finalAnswer(updates)).toBe("Concise answer.");
+	});
+
+	it("leaves the plan alone when the plan tool isn't offered", async () => {
+		scriptRounds([{ content: "a plain answer" }]);
+		const args = turn(later) as { conv: { mlAssistant: boolean } };
+		args.conv.mlAssistant = false;
+
+		const { updates } = await runFlow(args as Partial<Parameters<typeof runMcpFlow>[0]>);
+
+		expect(mocks.create).toHaveBeenCalledTimes(1);
+		expect(finalAnswer(updates)).toBe("a plain answer");
+	});
+
+	it("counts a steered continuation as the turn it continues", async () => {
+		scriptRounds([{ content: "stopped early" }, { content: "finished" }]);
+
+		await runFlow(
+			turn(later, [
+				{ id: "original", from: "assistant", content: "", createdAt: startedAt },
+				{
+					id: "turn",
+					from: "assistant",
+					content: "",
+					createdAt: new Date(later.getTime() + 1000),
+					queuedContinuationOf: "original",
+				},
+			])
+		);
+
+		expect(mocks.create).toHaveBeenCalledTimes(2);
 	});
 });
 
@@ -1563,5 +1833,77 @@ describe("attachments over the provider's limit", () => {
 		>);
 
 		expect(notices(updates)).toEqual([]);
+	});
+});
+
+describe("runMcpFlow under Omni", () => {
+	const DEEPSEEK = "deepseek-ai/DeepSeek-V4.1-Flash-1017";
+	const omni = { id: "omni", name: "omni", isRouter: true, supportsTools: true, parameters: {} };
+	const hfConfig = config as unknown as { isHuggingChat: boolean };
+
+	beforeEach(() => {
+		hfConfig.isHuggingChat = true;
+		mocks.routedTarget = {
+			id: DEEPSEEK,
+			name: DEEPSEEK,
+			supportsTools: true,
+			parameters: { max_tokens: 49152 },
+			defaultProvider: "novita",
+			providerMaxTokens: { scaleway: 32768 },
+			providers: [{ provider: "novita" }, { provider: "scaleway" }],
+		};
+	});
+	afterEach(() => {
+		hfConfig.isHuggingChat = false;
+		mocks.routedTarget = undefined;
+		vi.unstubAllGlobals();
+	});
+
+	it("asks the routed model's default provider, with the model's own max_tokens", async () => {
+		scriptRounds([{ content: "ok" }]);
+		await runFlow({ model: omni } as never);
+		const body = mocks.create.mock.calls[0][0];
+		expect(body.model).toBe(`${DEEPSEEK}:novita`);
+		expect(body.max_tokens).toBe(49152);
+	});
+
+	it("routes around the default provider when it is down", async () => {
+		scriptRounds([{ content: "ok" }]);
+		await runFlow({ model: omni } as never);
+		const statuses = [503, 200];
+		const fetchMock = vi.fn(async () => new Response("{}", { status: statuses.shift() }));
+		vi.stubGlobal("fetch", fetchMock);
+
+		await mocks.clientOptions?.fetch?.("https://router.test/v1/chat/completions", {
+			method: "POST",
+			body: JSON.stringify({ model: `${DEEPSEEK}:novita`, max_tokens: 49152 }),
+		});
+
+		const sent = fetchMock.mock.calls.map((call) =>
+			JSON.parse((call as unknown as [string, RequestInit])[1].body as string)
+		);
+		expect(sent).toEqual([
+			{ model: `${DEEPSEEK}:novita`, max_tokens: 49152 },
+			{ model: DEEPSEEK, max_tokens: 32768 },
+		]);
+	});
+
+	it("keeps a provider the user picked for the model they chose directly", async () => {
+		mocks.routedTarget = undefined;
+		scriptRounds([{ content: "ok" }]);
+		await runFlow({
+			model: { ...(omni as object), id: DEEPSEEK, name: DEEPSEEK, isRouter: false },
+			provider: "scaleway",
+		} as never);
+		const fetchMock = vi.fn(async () => new Response("{}", { status: 429 }));
+		vi.stubGlobal("fetch", fetchMock);
+
+		await mocks.clientOptions?.fetch?.("https://router.test/v1/chat/completions", {
+			method: "POST",
+			body: JSON.stringify({ model: `${DEEPSEEK}:scaleway` }),
+		});
+
+		expect(mocks.create.mock.calls[0][0].model).toBe(`${DEEPSEEK}:scaleway`);
+		expect(fetchMock).toHaveBeenCalledTimes(1);
 	});
 });

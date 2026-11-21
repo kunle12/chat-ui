@@ -1,6 +1,15 @@
+import { loadMcpSelection, selectionLocals } from "$lib/server/mcp/savedSelection";
+import {
+	parseLinkedSessionId,
+	connectedLocals,
+	linkedSessionId,
+} from "$lib/server/slack/ownerIdentity";
+import { ConnectionError } from "$lib/server/slack/links";
+import { slackLocals } from "$lib/server/slack/identity";
 import { randomUUID } from "crypto";
 import { MongoInvalidArgumentError, MongoServerError } from "mongodb";
 import { collections } from "$lib/server/database";
+import { expireReview } from "$lib/server/mlReviews/store";
 import { config } from "$lib/server/config";
 import { logger } from "$lib/server/logger";
 import { onExit } from "$lib/server/exitHandler";
@@ -8,7 +17,7 @@ import { models } from "$lib/server/models";
 import { buildSubtree } from "$lib/utils/tree/buildSubtree";
 import { textGeneration } from "$lib/server/textGeneration";
 import { isMlAssistantConversation } from "$lib/server/mlAssistant";
-import { mlAssistantProviderFor } from "$lib/server/mlAssistantModels";
+import { requestProvider } from "$lib/server/requestProvider";
 import { stampMlHarness } from "$lib/server/mlAssistantHarness";
 import { ML_ASSISTANT_EFFORT } from "$lib/constants/mlAssistant";
 import { waitResumeResultText } from "$lib/server/textGeneration/builtinTools/waitTool";
@@ -27,7 +36,9 @@ import { applyUpdateToMessage } from "./applyUpdate";
 import { turnAbandoned, turnEnded, turnRunning, turnUnsaved } from "./turnState";
 import { compressUpdatesForStorage, messageForStorage } from "./compressUpdates";
 import { offloadStoredToolImages } from "$lib/server/files/toolImages";
+import { takeQueuedInputs } from "$lib/server/queuedInputs/deliver";
 import { restoreRunningShape } from "$lib/utils/messageShape";
+import { decryptSessionOauth } from "$lib/server/sessionOauth";
 
 const SWEEP_BATCH = 5;
 /** A row this many attempts deep is not going to resume; stop burning turns on it. */
@@ -98,16 +109,18 @@ async function expireUnsavedPrompts(
 					"pending.messageId": park.messageId,
 					status: "pending",
 				},
-				{ projection: { elicitationId: 1 } }
+				{ projection: { elicitationId: 1, pending: 1 } }
 			)
 			.toArray();
-		for (const { _id, elicitationId } of open) {
+		for (const { _id, elicitationId, pending } of open) {
 			const now = new Date();
 			const result = await collections.mcpElicitations.updateOne(
 				{ _id, status: "pending" },
 				{ $set: { expiresAt: now, updatedAt: now } }
 			);
 			if (result.matchedCount === 0) continue;
+			// otherwise the pane gets 409 on submit, then 404 once the ttl removes the row
+			if (pending?.kind === "review") await expireReview(park.conversationId, pending.reviewId);
 			closed.push({
 				type: MessageUpdateType.Elicitation,
 				subtype: MessageElicitationUpdateType.Resolved,
@@ -157,8 +170,7 @@ async function claimDueCall(now: Date): Promise<ParkedCall | null> {
 		{ $set: { status: "resuming", takenAt: now, updatedAt: now }, $inc: { attempts: 1 } },
 		{ sort: { resumeAt: 1 }, returnDocument: "after" }
 	);
-	// Driver v5: findOneAndUpdate returns ModifyResult unless told otherwise.
-	return claimed?.value ?? null;
+	return claimed;
 }
 
 /**
@@ -231,6 +243,21 @@ async function abandon(park: ParkedCall, reason: string): Promise<void> {
 }
 
 /**
+ * The owner's saved MCP selection for a turn a personal Slack session starts without a
+ * request. Only turn-starting callers load it: token lookups and review delivery don't
+ * need tools, and an unreadable selection falls back to the preset servers.
+ */
+export async function savedSlackSelection(
+	park: Pick<ParkedCall, "sessionId">,
+	locals: App.Locals,
+	tokenExpired: boolean
+) {
+	if (tokenExpired || !locals.user || !parseLinkedSessionId(park.sessionId)) return undefined;
+	const saved = await loadMcpSelection(locals.user._id);
+	return saved.status === "ok" ? saved.selection : undefined;
+}
+
+/**
  * Rebuild the identity the parked turn ran as. There is no request to read one
  * from, so it comes from the row and the stored session — which also means a
  * resume can only ever act as the user who parked it.
@@ -239,9 +266,34 @@ async function abandon(park: ParkedCall, reason: string): Promise<void> {
  * tool result, so it can say so rather than failing opaquely on the first call.
  */
 export async function rebuildIdentity(park: Pick<ParkedCall, "userId" | "sessionId">) {
+	const slackThreadId = parseLinkedSessionId(park.sessionId);
+	if (slackThreadId) {
+		const thread = await collections.slackThreads.findOne({
+			_id: slackThreadId,
+		});
+		if (!thread?.hfUserId || thread.deletedAt || !park.userId?.equals(thread.hfUserId))
+			throw new Error("Slack session owner no longer matches.");
+		let locals: App.Locals;
+		let tokenExpired = false;
+		try {
+			locals = await connectedLocals(thread);
+		} catch (error) {
+			if (!(error instanceof ConnectionError)) throw error;
+			const user = await collections.users.findOne({ _id: thread.hfUserId });
+			if (!user) throw error;
+			locals = { user, sessionId: linkedSessionId(thread), isAdmin: false };
+			tokenExpired = true;
+		}
+		const settings = await collections.settings.findOne({ userId: thread.hfUserId });
+		return { locals, settings, tokenExpired };
+	}
+
 	const user = park.userId
 		? ((await collections.users.findOne({ _id: park.userId })) ?? undefined)
 		: undefined;
+
+	if (user?.slackBotTeamId)
+		return { locals: slackLocals(user), settings: null, tokenExpired: false };
 
 	const session = park.userId
 		? await collections.sessions.find({ userId: park.userId }).sort({ updatedAt: -1 }).next()
@@ -249,7 +301,7 @@ export async function rebuildIdentity(park: Pick<ParkedCall, "userId" | "session
 			? await collections.sessions.findOne({ sessionId: park.sessionId })
 			: null;
 
-	const token = session?.oauth?.token;
+	const token = session?.oauth ? decryptSessionOauth(session.oauth)?.token : undefined;
 	const tokenExpired = Boolean(token?.expiresAt && token.expiresAt.getTime() <= Date.now());
 	const settings = await collections.settings.findOne(
 		park.userId ? { userId: park.userId } : { sessionId: park.sessionId ?? "" }
@@ -299,11 +351,17 @@ async function resumeParkedCallInner(park: ParkedCall): Promise<void> {
 	if (!message || message.from !== "assistant") {
 		return abandon(park, "no parked assistant message to resume");
 	}
+	// resuming here would write the old branch over the newer one, each run saves every message
+	if ((message.children?.length ?? 0) > 0) {
+		return abandon(park, "the conversation moved on while it waited");
+	}
 
 	const model = models.find((m) => m.id === conv.model);
 	if (!model) return abandon(park, `model ${conv.model} is no longer available`);
 
 	const { locals, settings, tokenExpired } = await rebuildIdentity(park);
+	const selection = await savedSlackSelection(park, locals, tokenExpired);
+	if (selection) (locals as unknown as Record<string, unknown>).mcp = selectionLocals(selection);
 
 	// persist rewrites every message, inline tool images must move out first
 	await offloadStoredToolImages(conv._id, conv.messages);
@@ -382,8 +440,14 @@ async function resumeParkedCallInner(park: ParkedCall): Promise<void> {
 	};
 
 	let hasError = false;
+	let turnClosed = false;
 	try {
 		apply(await turnRunning(turnKey));
+		if (parseLinkedSessionId(park.sessionId) && tokenExpired) {
+			throw new Error(
+				"Reconnect the original Hugging Face account in Slack, then resume this session."
+			);
+		}
 
 		// A re-claim after a pod died mid-resume finds the result already stored,
 		// followed by whatever that run did next; the turn carries on from there.
@@ -399,6 +463,9 @@ async function resumeParkedCallInner(park: ParkedCall): Promise<void> {
 				"[parked] wait result already delivered; continuing the stored turn"
 			);
 		} else {
+			const queued = isMlAssistantConversation(conv)
+				? await takeQueuedInputs(conv._id, message.id, park.toolUuid)
+				: undefined;
 			// The result the parked call has been missing. Replay pairs it with the call
 			// by uuid, which is what puts it in the model's history for the next round.
 			apply({
@@ -421,6 +488,7 @@ async function resumeParkedCallInner(park: ParkedCall): Promise<void> {
 					display: true,
 				},
 			});
+			if (queued) apply(queued);
 		}
 
 		const ctx: TextGenerationContext = {
@@ -431,12 +499,7 @@ async function resumeParkedCallInner(park: ParkedCall): Promise<void> {
 			promptedAt,
 			ip: "sweeper",
 			username: locals.user?.username,
-			provider:
-				config.isHuggingChat && !model.isRouter
-					? isMlAssistantConversation(conv)
-						? mlAssistantProviderFor(model.id, settings?.providerOverrides?.[model.id])
-						: settings?.providerOverrides?.[model.id]
-					: undefined,
+			...requestProvider(model, conv, settings?.providerOverrides),
 			reasoningEffort: isMlAssistantConversation(conv)
 				? ML_ASSISTANT_EFFORT
 				: settings?.reasoningEffortOverrides?.[model.id],
@@ -461,6 +524,7 @@ async function resumeParkedCallInner(park: ParkedCall): Promise<void> {
 		// CAS: misses when the resumed run parked again, and that state stands.
 		const endedUpdate = await turnEnded(turnKey, { failed: false });
 		if (endedUpdate) apply(endedUpdate);
+		turnClosed = Boolean(endedUpdate);
 	} catch (err) {
 		hasError = true;
 		logger.error({ err, parkedCallId: park.parkedCallId }, "[parked] resumed turn failed");
@@ -472,6 +536,7 @@ async function resumeParkedCallInner(park: ParkedCall): Promise<void> {
 		});
 		const failedUpdate = await turnEnded(turnKey, { failed: true, error: errorMessage });
 		if (failedUpdate) apply(failedUpdate);
+		turnClosed = Boolean(failedUpdate);
 	}
 
 	// Settled before the save: the run is over, so a re-claim could only repeat
@@ -536,6 +601,10 @@ async function resumeParkedCallInner(park: ParkedCall): Promise<void> {
 		}
 	} finally {
 		await writer.finish({ status: hasError ? "error" : "completed" });
+	}
+	if (turnClosed && isMlAssistantConversation(conv)) {
+		const { kickQueuedTurn } = await import("$lib/server/queuedInputs/drain");
+		kickQueuedTurn(conv._id);
 	}
 }
 

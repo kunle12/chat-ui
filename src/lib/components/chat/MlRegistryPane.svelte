@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { page } from "$app/state";
 	import { tick, untrack } from "svelte";
 	import { SvelteMap, SvelteSet } from "svelte/reactivity";
 	import { base } from "$app/paths";
@@ -48,13 +49,11 @@
 	} from "$lib/utils/mlRegistry";
 	import Modal from "../Modal.svelte";
 	import MlFileVersionView from "./MlFileVersionView.svelte";
-	import SidePane from "./SidePane.svelte";
 
 	import CarbonBook from "~icons/carbon/book";
 	import CarbonChartLine from "~icons/carbon/chart-line";
 	import CarbonChevronRight from "~icons/carbon/chevron-right";
 	import CarbonChip from "~icons/carbon/chip";
-	import CarbonCloseLarge from "~icons/carbon/close-large";
 	import CarbonCloudUpload from "~icons/carbon/cloud-upload";
 	import CarbonCube from "~icons/carbon/cube";
 	import CarbonDataTable from "~icons/carbon/data-table";
@@ -193,7 +192,7 @@
 
 	// the conversation left and took its rows, close like the other views do when their item goes
 	$effect(() => {
-		if (showing && mlRegistry.conversationId === undefined) sidePane.close();
+		if (showing && mlRegistry.conversationId === undefined) sidePane.closeTab("registry");
 	});
 
 	$effect(() => {
@@ -323,7 +322,7 @@
 					</span>
 				{/if}
 			</div>
-			{#if isStoppableSandbox(service)}
+			{#if !page.data.slackThreadUrl && isStoppableSandbox(service)}
 				{@const note = billingNote(service, idle, now)}
 				<div
 					class="ml-sandbox-billing mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-[#78716c] dark:text-[#a8a29e]"
@@ -636,7 +635,7 @@
 {/snippet}
 
 {#if showing}
-	<SidePane label="Resources">
+	<div class="flex h-full min-h-0 flex-col" aria-label="Resources">
 		<!-- container query, the pane is resizable and at phone width the title and controls take the row -->
 		<header
 			class="@container relative z-10 flex h-12 flex-none items-center gap-2 border-b border-gray-100 px-3 dark:border-gray-800"
@@ -661,14 +660,6 @@
 					onclick={() => mlRegistry.refresh()}
 				>
 					<CarbonRenew />
-				</button>
-				<button
-					type="button"
-					class="ml-0.5 btn rounded-md p-1 text-base hover:bg-gray-100 hover:text-gray-600 dark:hover:bg-gray-800 dark:hover:text-gray-300"
-					title="Close panel (Esc)"
-					onclick={() => sidePane.close()}
-				>
-					<CarbonCloseLarge />
 				</button>
 			</div>
 		</header>
@@ -1191,7 +1182,7 @@
 				</section>
 			{/if}
 		</div>
-	</SidePane>
+	</div>
 {/if}
 
 {#if showing && shownImage}

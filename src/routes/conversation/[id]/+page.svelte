@@ -13,6 +13,7 @@
 	import { findCurrentModel } from "$lib/utils/models";
 	import type { Message } from "$lib/types/Message";
 	import type { TrackioDashboardView } from "$lib/utils/trackioView";
+	import type { PaperQuote } from "$lib/utils/paper";
 	import { saveComposerDraft, takeComposerDraft } from "$lib/stores/composerDrafts";
 	import { useConversationsStore } from "$lib/stores/conversations.svelte";
 	import file2base64 from "$lib/utils/file2base64";
@@ -38,6 +39,7 @@
 	import "katex/dist/katex.min.css";
 	import { updateDebouncer } from "$lib/utils/updates.js";
 	import SubscribeModal from "$lib/components/SubscribeModal.svelte";
+	import { paymentErrorNotice } from "$lib/utils/paymentErrors";
 	import { loading } from "$lib/stores/loading.js";
 	import { streamStart } from "$lib/utils/haptics";
 	import { requireAuthUser } from "$lib/utils/auth.js";
@@ -51,6 +53,7 @@
 	import { useAPIClient, handleResponse } from "$lib/APIClient";
 	import SharePreviewTags from "$lib/components/SharePreviewTags.svelte";
 	import { mlAssistant } from "$lib/stores/mlAssistant.svelte";
+	import { queuedInputs } from "$lib/stores/queuedInputs.svelte";
 	import { ML_ASSISTANT_MODE } from "$lib/utils/mlAssistantFlag";
 	import { planStepsToMlSteps } from "$lib/utils/planProgress";
 
@@ -69,6 +72,14 @@
 	let resuming = $state(false);
 	let initialRun = true;
 	let showSubscribeModal = $state(false);
+
+	function showPaymentError(update: { statusCode?: number; errorCode?: string }): boolean {
+		if (update.statusCode !== 402) return false;
+		const notice = paymentErrorNotice(update.errorCode);
+		if (notice) $error = notice;
+		else showSubscribeModal = true;
+		return true;
+	}
 	// Conversation-scoped stop tombstone. A boolean reset on page.params.id
 	// changes resurrects the generating UI: invalidation reassigns page.params,
 	// which clears the flag while the stopped conversation's snapshot is still
@@ -103,6 +114,7 @@
 	let draft = $state(initialDraft.draft);
 	let files: File[] = $state(initialDraft.files);
 	let dashboardViews: TrackioDashboardView[] = $state(initialDraft.dashboardViews);
+	let paperQuotes: PaperQuote[] = $state(initialDraft.paperQuotes);
 	let composerFor = untrack(() => convId);
 
 	function stashComposer(conversationId: string) {
@@ -110,6 +122,7 @@
 			draft,
 			files: [...files],
 			dashboardViews: [...dashboardViews],
+			paperQuotes: [...paperQuotes],
 		});
 	}
 
@@ -118,7 +131,7 @@
 		untrack(() => {
 			if (id === composerFor) return;
 			stashComposer(composerFor);
-			({ draft, files, dashboardViews } = takeComposerDraft(id));
+			({ draft, files, dashboardViews, paperQuotes } = takeComposerDraft(id));
 			composerFor = id;
 		});
 	});
@@ -236,6 +249,8 @@
 			// when the user pressed send. A retry re-sends what the message already has.
 			const sentViews: TrackioDashboardView[] =
 				isRetry || resumeElicitationId ? [] : $state.snapshot(dashboardViews);
+			const sentQuotes: PaperQuote[] =
+				isRetry || resumeElicitationId ? [] : $state.snapshot(paperQuotes);
 			const base64Files = await Promise.all(
 				(files ?? []).map((file) =>
 					file2base64(file).then((value) => ({
@@ -282,6 +297,9 @@
 							...(messageToRetry.dashboardViews?.length
 								? { dashboardViews: messageToRetry.dashboardViews }
 								: {}),
+							...(messageToRetry.paperQuotes?.length
+								? { paperQuotes: messageToRetry.paperQuotes }
+								: {}),
 						},
 						messageId
 					);
@@ -318,6 +336,7 @@
 						content: prompt ?? "",
 						files: base64Files,
 						...(sentViews.length ? { dashboardViews: sentViews } : {}),
+						...(sentQuotes.length ? { paperQuotes: sentQuotes } : {}),
 					},
 					messageId
 				);
@@ -377,6 +396,7 @@
 					generationId: activeGenerationId,
 					files: isRetry ? userMessage?.files : base64Files,
 					dashboardViews: sentViews,
+					paperQuotes: sentQuotes,
 					selectedMcpServerNames: $enabledServers.map((s) => s.name),
 					selectedMcpServers: $enabledServers.map((s) => ({
 						name: s.name,
@@ -406,6 +426,7 @@
 			// unconditional clear here would wipe that restored queue.
 			if (base64Files.length > 0) files = [];
 			if (sentViews.length > 0) dashboardViews = [];
+			if (sentQuotes.length > 0) paperQuotes = [];
 
 			streamedMessage = messageToWriteTo;
 			await consumeMessageUpdates(messageUpdatesIterator, messageToWriteTo, {
@@ -420,7 +441,8 @@
 				},
 				onTitle: (title) => convsStore.update(convId, { title }),
 				onPlan: (update) => {
-					if (ML_ASSISTANT_MODE) mlAssistant.setPlan(planStepsToMlSteps(update.steps));
+					if (ML_ASSISTANT_MODE)
+						mlAssistant.setPlan(planStepsToMlSteps(update.steps), update.version);
 				},
 				onBudget: (update) => {
 					if (ML_ASSISTANT_MODE) {
@@ -435,9 +457,8 @@
 					noteServerNow(update.serverNow);
 				},
 				onError: (update) => {
-					if (update.statusCode === 402) {
-						showSubscribeModal = true;
-					} else if (
+					if (showPaymentError(update)) return;
+					if (
 						update.statusCode === 401 &&
 						typeof update.message === "string" &&
 						/oauth authorization|has been revoked|requested scopes/i.test(update.message)
@@ -550,7 +571,8 @@
 				onStreamStart: () => {},
 				onTitle: (title) => convsStore.update(runConvId, { title }),
 				onPlan: (update) => {
-					if (ML_ASSISTANT_MODE) mlAssistant.setPlan(planStepsToMlSteps(update.steps));
+					if (ML_ASSISTANT_MODE)
+						mlAssistant.setPlan(planStepsToMlSteps(update.steps), update.version);
 				},
 				onBudget: (update) => {
 					if (ML_ASSISTANT_MODE) {
@@ -565,7 +587,7 @@
 					noteServerNow(update.serverNow);
 				},
 				onError: (update) => {
-					$error = update.message ?? "An error has occurred";
+					if (!showPaymentError(update)) $error = update.message ?? "An error has occurred";
 				},
 			});
 		} catch (err) {
@@ -682,6 +704,7 @@
 	}
 
 	async function stopGeneration() {
+		if (data.slackThreadUrl) return;
 		// Snapshot the stop point first: the generation run this tab started
 		// (if any) and how many characters of the reply are on screen right
 		// now. The server clamps the persisted text back to this so the
@@ -694,6 +717,7 @@
 				: undefined;
 
 		stopRequestedFor = convId;
+		queuedInputs.takeBack();
 		$isAborted = true;
 		$loading = false;
 		messageUpdatesAbortController.abort();
@@ -719,6 +743,10 @@
 			if (!response.ok) {
 				throw new Error(`Stop request failed: ${response.status}`);
 			}
+			const body = (await response.json().catch(() => ({}))) as {
+				cancelledQueuedInputs?: string[];
+			};
+			queuedInputs.stopped(body.cancelledQueuedInputs ?? []);
 		};
 
 		// Store the promise so writeMessage's finally block can await it
@@ -727,6 +755,7 @@
 		// generation watchers act on), so retry with backoff instead of giving
 		// up after a single transient failure.
 		stopRequestPromise = (async () => {
+			await queuedInputs.settled();
 			const delays = [0, 300, 1000, 3000];
 			for (const [attempt, delay] of delays.entries()) {
 				if (delay) await new Promise((resolve) => setTimeout(resolve, delay));
@@ -775,10 +804,12 @@
 	});
 
 	async function onMessage(content: string) {
+		if (data.slackThreadUrl) return;
 		await writeMessage({ prompt: content });
 	}
 
 	async function onRetry(payload: { id: Message["id"]; content?: string }) {
+		if (data.slackThreadUrl) return;
 		if (requireAuthUser()) return;
 
 		const lastMsgId = payload.id;
@@ -930,14 +961,17 @@
 		messages={messagesPath as Message[]}
 		{messagesAlternatives}
 		shared={data.shared}
+		slackThreadUrl={data.slackThreadUrl}
 		preprompt={data.preprompt}
 		bind:draft
 		bind:files
 		bind:dashboardViews
+		bind:paperQuotes
 		onmessage={onMessage}
 		onretry={onRetry}
 		onshowAlternateMsg={onShowAlternateMsg}
 		onstop={stopGeneration}
+		onqueuedturn={() => resyncTurn()}
 		models={data.models}
 		{currentModel}
 	/>

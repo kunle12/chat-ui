@@ -3,11 +3,14 @@
 	import { onDestroy, tick, untrack } from "svelte";
 
 	import ArtifactPanel from "./ArtifactPanel.svelte";
-	import TrackioPane from "./TrackioPane.svelte";
+	import SidePaneHost from "./SidePaneHost.svelte";
 	import MlRegistryPane from "./MlRegistryPane.svelte";
+	import MlReviewPane from "./MlReviewPane.svelte";
 	import { collectArtifacts } from "$lib/utils/artifacts";
 	import { setArtifactsContext } from "$lib/utils/artifactsContext";
 	import { collectTrackioDashboards } from "$lib/utils/trackio";
+	import { collectWorkflowSpaces } from "$lib/utils/workflowSpace";
+	import { collectPapers } from "$lib/utils/paper";
 	import { trackioStatus } from "$lib/stores/trackioStatus.svelte";
 	import { collectPaneItems } from "$lib/utils/paneItems";
 	import { sidePane } from "$lib/stores/sidePane.svelte";
@@ -17,12 +20,16 @@
 	import IconFast from "$lib/components/icons/IconFast.svelte";
 	import CarbonCaretDown from "~icons/carbon/caret-down";
 	import { PROVIDERS_HUB_ORGS } from "@huggingface/inference";
+	import { shownProvider } from "$lib/utils/shownProvider";
 	import CarbonDirectionRight from "~icons/carbon/direction-right-01";
 	import IconArrowUp from "~icons/lucide/arrow-up";
 	import IconMic from "~icons/lucide/mic";
 
 	import ChatInput from "./ChatInput.svelte";
 	import AskQuestion from "./AskQuestion.svelte";
+	import SideQuestionPanel from "./SideQuestionPanel.svelte";
+	import { isWebSideQuestion } from "$lib/utils/sideQuestion";
+	import { BTW_COMMAND } from "$lib/utils/slashCommands";
 	import { firstQuestionFor } from "$lib/stores/pendingQuestion";
 	import { shouldShowPendingPlaceholder } from "$lib/utils/pendingPlaceholder";
 	import VoiceRecorder from "./VoiceRecorder.svelte";
@@ -44,7 +51,9 @@
 	import ScrollToPreviousBtn from "../ScrollToPreviousBtn.svelte";
 	import { browser } from "$app/environment";
 	import { createChatScroll } from "$lib/utils/scroll/chatScroll.svelte";
-	import { isAssistantGenerationTerminal } from "$lib/utils/generationState";
+	import { isAssistantGenerationTerminal, turnStateOf } from "$lib/utils/generationState";
+	import { queuedInputs } from "$lib/stores/queuedInputs.svelte";
+	import QueuedInputs from "./QueuedInputs.svelte";
 	import { NAV_EDGE_SWIPE_ZONE_PX } from "$lib/constants/gestures";
 	import SystemPromptModal from "../SystemPromptModal.svelte";
 	import ShareConversationModal from "../ShareConversationModal.svelte";
@@ -57,6 +66,13 @@
 		viewsInText,
 		type TrackioDashboardView,
 	} from "$lib/utils/trackioView";
+	import {
+		MAX_QUOTES_PER_MESSAGE,
+		newPaperQuoteKey,
+		paperQuoteToken,
+		quotesInText,
+		type PaperQuote,
+	} from "$lib/utils/paper";
 	import { useSettingsStore } from "$lib/stores/settings";
 	import { error } from "$lib/stores/errors";
 	import ModelSwitch from "./ModelSwitch.svelte";
@@ -78,6 +94,7 @@
 	import { ML_ASSISTANT_MODE } from "$lib/utils/mlAssistantFlag";
 	import { mlAssistant } from "$lib/stores/mlAssistant.svelte";
 	import { mlRegistry } from "$lib/stores/mlRegistry.svelte";
+	import { mlReviews } from "$lib/stores/mlReview.svelte";
 	import MlInternSpotlight from "./MlInternSpotlight.svelte";
 	import { useConversationsStore } from "$lib/stores/conversations.svelte";
 	import { MediaQuery } from "svelte/reactivity";
@@ -109,6 +126,7 @@
 		isMessageToolErrorUpdate,
 		isMessageToolResultUpdate,
 	} from "$lib/utils/messageUpdates";
+	import { MessageUpdateType } from "$lib/types/MessageUpdate";
 	import type { ToolFront } from "$lib/types/Tool";
 
 	interface Props {
@@ -118,15 +136,19 @@
 		pending?: boolean;
 		resuming?: boolean;
 		shared?: boolean;
+		slackThreadUrl?: string;
 		currentModel: Model;
 		models: Model[];
 		preprompt?: string | undefined;
 		files?: File[];
 		dashboardViews?: TrackioDashboardView[];
+		paperQuotes?: PaperQuote[];
 		onmessage?: (content: string) => void;
 		onstop?: () => void;
 		onretry?: (payload: { id: Message["id"]; content?: string }) => void;
 		onshowAlternateMsg?: (payload: { id: Message["id"] }) => void;
+		/** the server started a turn from the queue */
+		onqueuedturn?: () => void;
 		draft?: string;
 	}
 
@@ -137,19 +159,24 @@
 		pending = false,
 		resuming = false,
 		shared = false,
+		slackThreadUrl,
 		currentModel,
 		models,
 		preprompt = undefined,
 		files = $bindable([]),
 		dashboardViews = $bindable([]),
+		paperQuotes = $bindable([]),
 		draft = $bindable(""),
 		onmessage,
 		onstop,
 		onretry,
 		onshowAlternateMsg,
+		onqueuedturn,
 	}: Props = $props();
 
-	let isReadOnly = $derived(!models.some((model) => model.id === currentModel.id));
+	let isReadOnly = $derived(
+		!!slackThreadUrl || !models.some((model) => model.id === currentModel.id)
+	);
 
 	const publicConfig = usePublicConfig();
 	let canShare = $derived(
@@ -197,10 +224,16 @@
 	// reopening the conversation finds the same dashboards.
 	let trackioDashboards = $derived(collectTrackioDashboards(messages));
 
-	// One ordered list of everything the pane can show, so its next/previous walks
-	// artifacts and dashboards together instead of each view navigating only its
-	// own kind.
-	let paneItems = $derived(collectPaneItems(messages, artifactRegistry, trackioDashboards));
+	let workflowSpaces = $derived(collectWorkflowSpaces(messages));
+
+	// Papers opened by open_paper, read from that tool's own output.
+	let papers = $derived(collectPapers(messages));
+
+	// One ordered list of everything the pane can show, for the tab labels and the
+	// strip's "open another item" menu.
+	let paneItems = $derived(
+		collectPaneItems(messages, artifactRegistry, trackioDashboards, workflowSpaces, papers)
+	);
 
 	let shareModalOpen = $state(false);
 	let editMsdgId: Message["id"] | null = $state(null);
@@ -214,7 +247,18 @@
 	);
 	let isTouchDevice = $derived(browser && navigator.maxTouchPoints > 0);
 
+	let sideQuestionPanel: ReturnType<typeof SideQuestionPanel> | undefined = $state();
+	let draftIsSideQuestion = $derived(Boolean(sideQuestionPanel) && isWebSideQuestion(draft));
+
 	const handleSubmit = () => {
+		if (sideQuestionPanel?.intercept(draft)) {
+			draft = "";
+			return;
+		}
+		if (queueing && draft.trim()) {
+			queueDraft();
+			return;
+		}
 		if (requireAuthUser() || loading || !draft) return;
 		tap();
 		chatScroll.notifySend();
@@ -491,13 +535,16 @@
 		// queue survives.
 		const queuedFiles = files;
 		const queuedViews = dashboardViews;
+		const queuedQuotes = paperQuotes;
 		files = [];
 		dashboardViews = [];
+		paperQuotes = [];
 		try {
 			onmessage?.(text);
 		} finally {
 			files = queuedFiles;
 			dashboardViews = queuedViews;
+			paperQuotes = queuedQuotes;
 		}
 		return true;
 	}
@@ -625,13 +672,11 @@
 	// This used to
 	// piggyback on a first-message-id heuristic that misfired when the first
 	// message was edited; the route param is the real signal.
-	let prevConversationKey = page.params?.id;
+	// The store keeps which conversation its state belongs to, since this view
+	// is mounted anew on the way through the new-chat page.
 	$effect(() => {
 		const key = page.params?.id;
-		if (key !== prevConversationKey) {
-			sidePane.switchConversation(prevConversationKey, key);
-			prevConversationKey = key;
-		}
+		untrack(() => sidePane.enterConversation(key));
 	});
 
 	// The growing content element mounts after the container when a
@@ -676,6 +721,28 @@
 		sidePane.maybeAutoOpenTrackio(latest.url, latest.label);
 	});
 
+	$effect(() => {
+		const latest = workflowSpaces.at(-1);
+		if (!latest || !loading) return;
+		// Desktop only, and never over another view: with another one showing, it
+		// opens as a background tab.
+		if (!window.matchMedia("(min-width: 768px)").matches) return;
+		untrack(() => sidePane.maybeAutoOpenWorkflow(latest));
+	});
+
+	// A paper the agent opens in the answer being written comes up beside the
+	// chat, once: closing its tab sticks. Only that answer's papers count, so
+	// sending anything after a reload does not reopen an older one. Desktop
+	// only, like the dashboards above.
+	$effect(() => {
+		if (!loading) return;
+		const streaming = messages.at(-1);
+		const latest = streaming ? collectPapers([streaming]).at(-1) : undefined;
+		if (!latest) return;
+		if (!window.matchMedia("(min-width: 768px)").matches) return;
+		untrack(() => sidePane.maybeAutoOpenPaper(latest.id, latest.title));
+	});
+
 	// Shared conversations containing artifacts usually exist to show one off:
 	// open the most recent artifact on load. Desktop only, since on mobile the
 	// panel is a fullscreen overlay that would hide the conversation entirely.
@@ -705,10 +772,8 @@
 	);
 
 	// Get provider override for the current model (HuggingChat only)
-	let providerOverride = $derived($settings.providerOverrides?.[currentModel.id]);
-	let hasProviderOverride = $derived(
-		providerOverride && providerOverride !== "auto" && !currentModel.isRouter
-	);
+	let providerOverride = $derived(shownProvider(currentModel, $settings.providerOverrides));
+	let hasProviderOverride = $derived(providerOverride !== undefined);
 
 	// Always allow common text-like files; add images only when model is multimodal
 	import { TEXT_MIME_ALLOWLIST, IMAGE_MIME_ALLOWLIST_DEFAULT } from "$lib/constants/mime";
@@ -737,6 +802,82 @@
 
 	let mlModeOn = $derived(ML_ASSISTANT_MODE && mlAssistant.enabled);
 	let mlTaskRunning = $derived(ML_ASSISTANT_MODE && mlAssistant.taskStarted);
+
+	// a message sent during a question still goes the usual way
+	let turnWaiting = $derived(turnStateOf(messages.at(-1))?.state === "waiting");
+	// a normal send could race the turn the server starts from the queue
+	let queueing = $derived(
+		mlTaskRunning &&
+			!shared &&
+			!isReadOnly &&
+			(loading || turnWaiting || queuedInputs.items.length > 0)
+	);
+
+	function queueDraft() {
+		if (files.length > 0) {
+			$error = "Attachments can be sent once ML Intern finishes this turn.";
+			return;
+		}
+		const text = draft.trim();
+		draft = "";
+		tap();
+		void queuedInputs.enqueue(text).then((outcome) => {
+			if (outcome !== "failed") return;
+			draft = draft ? `${text}\n\n${draft}` : text;
+			$error = "Could not queue the message. Try again.";
+		});
+	}
+
+	async function editQueued(id: string) {
+		const item = queuedInputs.items.find((queued) => queued.id === id);
+		if (!item) return;
+		const outcome = await queuedInputs.remove(id);
+		if (outcome === "cancelled") draft = draft ? `${item.text}\n\n${draft}` : item.text;
+		else if (outcome === "error") $error = "Could not edit the queued message. Try again.";
+	}
+
+	async function sendQueuedNow() {
+		if (!(await queuedInputs.sendNow())) {
+			$error = "Could not send the queued messages now. Try again.";
+		}
+	}
+
+	async function removeQueued(id: string) {
+		if ((await queuedInputs.remove(id)) === "error") {
+			$error = "Could not remove the queued message. Try again.";
+		}
+	}
+
+	$effect(() => {
+		const conversationId = page.params?.id;
+		if (!mlTaskRunning || shared || !conversationId) {
+			queuedInputs.reset();
+			return;
+		}
+		return queuedInputs.watch(conversationId, {
+			busy: loading || turnWaiting,
+			onStarted: () => onqueuedturn?.(),
+		});
+	});
+
+	$effect(() => {
+		if (queuedInputs.returned.length === 0) return;
+		untrack(() => {
+			const returned = queuedInputs.takeReturned();
+			draft = [...returned.map((input) => input.text), draft].filter(Boolean).join("\n\n");
+			const reason = returned.find((input) => input.error)?.error;
+			if (reason) $error = reason;
+		});
+	});
+
+	$effect(() => {
+		const delivered = new Set<string>();
+		for (const update of messages.at(-1)?.updates ?? []) {
+			if (update.type !== MessageUpdateType.QueuedInput) continue;
+			for (const input of update.inputs) delivered.add(input.id);
+		}
+		untrack(() => queuedInputs.delivered(delivered));
+	});
 	// Resume beats Retry for a failed agentic turn: retry re-runs the whole turn
 	// (duplicating jobs and repos already created), resume continues past the
 	// preserved transcript. ML mode only — elsewhere turns rarely carry work
@@ -826,10 +967,12 @@
 		};
 		untrack(() => {
 			const reset = mlAssistant.syncConversation(conversationId, Boolean(startedInMlMode));
-			// A reopened mode conversation renders mid-plan from the stored snapshot;
-			// a reset without one keeps the strip on its tool note.
-			if (reset && startedInMlMode && plan?.steps.length) {
-				mlAssistant.setPlan(planStepsToMlSteps(plan.steps));
+			// A reopened mode conversation renders mid-plan from the stored snapshot, and
+			// so does a reload: a turn started elsewhere (Slack, another tab) streams its
+			// plan to no one here, and the resubscribe starts past it. A snapshot without
+			// a plan keeps the strip on its tool note.
+			if (startedInMlMode && plan?.steps.length) {
+				mlAssistant.setPlan(planStepsToMlSteps(plan.steps), plan.version);
 			}
 			// Loaded state seeds the ledger; the stream's Budget updates take over
 			// from there. The empty-ledger condition covers adoption — the create
@@ -857,6 +1000,15 @@
 			return;
 		}
 		return mlRegistry.watch(conversationId, { live: loading });
+	});
+
+	$effect(() => {
+		const conversationId = ML_ASSISTANT_MODE && !shared ? page.params?.id : undefined;
+		untrack(() => mlReviews.bind(conversationId));
+	});
+
+	$effect(() => {
+		if (!loading) untrack(() => mlReviews.refreshOpen());
 	});
 
 	const budgetClient = useAPIClient();
@@ -944,6 +1096,7 @@
 			draft = currentDraft.trim() ? `${currentDraft}\n\n${pending.text}` : pending.text;
 		}
 		for (const view of pending.dashboardViews ?? []) insertViewToken(view);
+		for (const quote of pending.paperQuotes ?? []) insertQuoteToken(quote);
 		pendingComposerPayload.set(undefined);
 	});
 
@@ -961,7 +1114,18 @@
 		});
 	});
 
-	// Through the editing stack where it can, so the insert is one Cmd+Z away.
+	// Same for paper quotes: a deleted chip's quote comes back with an undo.
+	const knownQuotes = new Map<string, PaperQuote>();
+	$effect(() => {
+		const text = draft;
+		untrack(() => {
+			for (const quote of paperQuotes) knownQuotes.set(paperQuoteToken(quote), quote);
+			const next = quotesInText(text, knownQuotes.values());
+			const same = next.length === paperQuotes.length && next.every((q, i) => q === paperQuotes[i]);
+			if (!same) paperQuotes = next;
+		});
+	});
+
 	function insertViewToken(view: TrackioDashboardView) {
 		if (untrack(() => dashboardViews).length >= MAX_VIEWS_PER_MESSAGE) {
 			$error = `A message can carry at most ${MAX_VIEWS_PER_MESSAGE} dashboard views.`;
@@ -970,6 +1134,22 @@
 		const keyed = { ...view, key: newTrackioViewKey() };
 		const token = trackioViewToken(keyed);
 		knownViews.set(token, keyed);
+		insertToken(token);
+	}
+
+	function insertQuoteToken(quote: PaperQuote) {
+		if (untrack(() => paperQuotes).length >= MAX_QUOTES_PER_MESSAGE) {
+			$error = `A message can carry at most ${MAX_QUOTES_PER_MESSAGE} quotes.`;
+			return;
+		}
+		const keyed = { ...quote, key: newPaperQuoteKey() };
+		const token = paperQuoteToken(keyed);
+		knownQuotes.set(token, keyed);
+		insertToken(token);
+	}
+
+	// Through the editing stack where it can, so the insert is one Cmd+Z away.
+	function insertToken(token: string) {
 		const textarea = composerForm?.querySelector("textarea");
 		const current = untrack(() => draft);
 		const start = textarea && composerUsed ? textarea.selectionStart : current.length;
@@ -1126,11 +1306,7 @@
 		style="--scrollbar-gutter: {chatScroll.gutterHalfPx}px"
 	>
 		{#if shareModalOpen}
-			<ShareConversationModal
-				open={shareModalOpen}
-				onclose={() => shareModal.close()}
-				downloadTrace={mlModeOn}
-			/>
+			<ShareConversationModal open={shareModalOpen} onclose={() => shareModal.close()} />
 		{/if}
 		{#if canShare}
 			<!-- Lives in the chat column (not the layout) so it stays visible when
@@ -1203,6 +1379,7 @@
 										alternatives={messagesAlternatives.find((a) => a.includes(message.id)) ?? []}
 										isAuthor={!shared}
 										readOnly={isReadOnly}
+										slackManaged={!!slackThreadUrl}
 										isLast={turnIdx === turns.length - 1 && msgIdx === turn.messages.length - 1}
 										bind:editMsdgId
 										onretry={(payload) => {
@@ -1233,7 +1410,7 @@
 								{/if}
 							</div>
 						{/each}
-						{#if isReadOnly}
+						{#if isReadOnly && !slackThreadUrl}
 							<ModelSwitch models={switchableModels} {currentModel} />
 						{/if}
 					</div>
@@ -1348,50 +1525,7 @@
 			{/if}
 
 			<div class="w-full">
-				{#if askQuestion}
-					<!-- Keyed: the next waiting question must not inherit this one's step and picks. -->
-					{#key askQuestion.request.elicitationId}
-						<AskQuestion
-							conversationId={askQuestion.conversationId}
-							request={askQuestion.request}
-						/>
-					{/key}
-				{/if}
-				<div class="flex w-full gap-2 *:mb-3">
-					{#if !loading && lastIsError}
-						{#if canResumeTurn}
-							<ResumeBtn classNames="ml-auto" onClick={sendResumeMessage} />
-						{/if}
-						<RetryBtn
-							classNames={canResumeTurn ? "" : "ml-auto"}
-							onClick={() => {
-								if (lastMessage && lastMessage.ancestors) {
-									onretry?.({
-										id: lastMessage.id,
-									});
-								}
-							}}
-						/>
-					{/if}
-				</div>
-				<form
-					bind:this={composerForm}
-					tabindex="-1"
-					aria-label={isFileUploadEnabled ? "file dropzone" : undefined}
-					onsubmit={(e) => {
-						e.preventDefault();
-						handleSubmit();
-					}}
-					class={{
-						"relative flex w-full max-w-4xl flex-1 flex-col rounded-xl border bg-gray-100 dark:bg-gray-800": true,
-						"transition-[border-color] duration-[350ms] ease-[ease]": ML_ASSISTANT_MODE,
-						"border-[#efc9ad] dark:border-[#5a3a22]": mlModeOn,
-						"dark:border-gray-700": !mlModeOn,
-						"opacity-30": isReadOnly,
-						"max-sm:mb-4": focused && isVirtualKeyboard(),
-					}}
-					style:--composer-actions-width={transcriptionEnabled && !loading ? "84px" : "44px"}
-				>
+				{#if slackThreadUrl}
 					{#if ML_ASSISTANT_MODE}
 						<MlAssistantStrip
 							visible={mlStripVisible}
@@ -1399,98 +1533,199 @@
 							statusLabel={mlAssistant.statusLabel}
 							complete={mlAssistant.complete}
 							budget={mlAssistant.budget}
-							onbudgetchange={page.params?.id ? changeMlBudget : undefined}
 							dashboard={trackioDashboards.at(-1)}
+							workflow={workflowSpaces.at(-1)}
+							{papers}
 							registry={mlRegistry.summary}
 						/>
 					{/if}
-					<!-- The composer box is a column so the ML Assistant strip can stack on
-					     top; this row is the composer proper and keeps its own layout. -->
-					<div class="flex w-full items-center">
-						{#if isRecording || isTranscribing}
-							<VoiceRecorder
-								{isTranscribing}
-								{isTouchDevice}
-								oncancel={() => {
-									isRecording = false;
-								}}
-								onconfirm={handleRecordingConfirm}
-								onsend={handleRecordingSend}
-								onerror={handleRecordingError}
+					<div
+						class="rounded-xl border bg-gray-100 p-4 text-sm dark:border-gray-700 dark:bg-gray-800"
+					>
+						<p>This session is managed in Slack. This view is read-only.</p>
+						<a class="font-medium underline" href={slackThreadUrl} target="_blank" rel="noreferrer"
+							>Continue in Slack</a
+						>
+					</div>
+				{:else}
+					{#if askQuestion}
+						<!-- Keyed: the next waiting question must not inherit this one's step and picks. -->
+						{#key askQuestion.request.elicitationId}
+							<AskQuestion
+								conversationId={askQuestion.conversationId}
+								request={askQuestion.request}
 							/>
-						{:else if onDrag && isFileUploadEnabled}
-							<FileDropzone bind:files bind:onDrag mimeTypes={activeMimeTypes} />
-						{:else}
-							<div
-								class="flex w-full flex-1 rounded-xl border-none bg-transparent"
-								class:paste-glow={pastedLongContent}
-							>
-								{#if lastIsError}
-									<ChatInput
-										value="Sorry, something went wrong. Please try again."
-										disabled={true}
-									/>
-								{:else}
-									<ChatInput
-										placeholder={isReadOnly
-											? "This conversation is read-only."
-											: mlModeOn
-												? ML_ASSISTANT_PLACEHOLDER
-												: "Ask anything"}
-										{loading}
-										bind:value={draft}
-										bind:files
-										mimeTypes={activeMimeTypes}
-										onsubmit={handleSubmit}
-										{onPaste}
-										disabled={isReadOnly || lastIsError}
-										{modelIsMultimodal}
-										{modelSupportsTools}
-										showMlPill={mlPillVisible}
-										bind:focused
-									/>
-								{/if}
-
-								{#if loading}
-									<StopGeneratingBtn
-										onClick={() => {
-											hapticError();
-											onstop?.();
-										}}
-										showBorder={true}
-										classNames="absolute bottom-2 right-2 size-8 sm:size-7 self-end rounded-full border bg-white text-black shadow-sm transition-none dark:border-transparent dark:bg-gray-600 dark:text-white"
-									/>
-								{:else}
-									{#if transcriptionEnabled}
-										<button
-											type="button"
-											class="absolute right-10 bottom-2 mr-1.5 btn size-8 self-end rounded-full border bg-white/50 text-gray-500 transition-none hover:bg-gray-50 hover:text-gray-700 sm:right-9 sm:size-7 dark:border-transparent dark:bg-gray-600/50 dark:text-gray-300 dark:hover:bg-gray-500 dark:hover:text-white"
-											disabled={isReadOnly}
-											onclick={() => {
-												isRecording = true;
-											}}
-											aria-label="Start voice recording"
-										>
-											<IconMic class="size-4" />
-										</button>
-									{/if}
-									<button
-										class="absolute right-2 bottom-2 btn size-8 self-end rounded-full border bg-white text-black shadow transition-none enabled:hover:bg-white enabled:hover:shadow-inner sm:size-7 dark:border-transparent dark:bg-gray-600 dark:text-white dark:hover:enabled:bg-black {!draft ||
-										isReadOnly
-											? ''
-											: 'bg-black! text-white! dark:bg-white! dark:text-black!'}"
-										disabled={!draft || isReadOnly}
-										type="submit"
-										aria-label="Send message"
-										name="submit"
-									>
-										<IconArrowUp />
-									</button>
-								{/if}
-							</div>
+						{/key}
+					{/if}
+					<div class="flex w-full gap-2 *:mb-3">
+						{#if !loading && lastIsError}
+							{#if canResumeTurn}
+								<ResumeBtn classNames="ml-auto" onClick={sendResumeMessage} />
+							{/if}
+							<RetryBtn
+								classNames={canResumeTurn ? "" : "ml-auto"}
+								onClick={() => {
+									if (lastMessage && lastMessage.ancestors) {
+										onretry?.({
+											id: lastMessage.id,
+										});
+									}
+								}}
+							/>
 						{/if}
 					</div>
-				</form>
+					{#if mlTaskRunning}
+						<QueuedInputs
+							items={queuedInputs.items}
+							busy={loading || turnWaiting}
+							slackManaged={!!slackThreadUrl}
+							onremove={removeQueued}
+							onedit={editQueued}
+							onsendnow={sendQueuedNow}
+						/>
+					{/if}
+					{#if mlTaskRunning && !shared && page.params?.id}
+						{#key page.params.id}
+							<SideQuestionPanel bind:this={sideQuestionPanel} conversationId={page.params.id} />
+						{/key}
+					{/if}
+					<form
+						bind:this={composerForm}
+						tabindex="-1"
+						aria-label={isFileUploadEnabled ? "file dropzone" : undefined}
+						onsubmit={(e) => {
+							e.preventDefault();
+							handleSubmit();
+						}}
+						class={{
+							"relative flex w-full max-w-4xl flex-1 flex-col rounded-xl border bg-gray-100 dark:bg-gray-800": true,
+							"transition-[border-color] duration-[350ms] ease-[ease]": ML_ASSISTANT_MODE,
+							"border-[#efc9ad] dark:border-[#5a3a22]": mlModeOn,
+							"dark:border-gray-700": !mlModeOn,
+							"opacity-30": isReadOnly,
+							"max-sm:mb-4": focused && isVirtualKeyboard(),
+						}}
+						style:--composer-actions-width={(transcriptionEnabled && !loading) ||
+						(loading && queueing && draft.trim() && !draftIsSideQuestion)
+							? "84px"
+							: "44px"}
+					>
+						{#if ML_ASSISTANT_MODE}
+							<MlAssistantStrip
+								visible={mlStripVisible}
+								steps={mlAssistant.steps}
+								statusLabel={mlAssistant.statusLabel}
+								complete={mlAssistant.complete}
+								budget={mlAssistant.budget}
+								onbudgetchange={page.params?.id ? changeMlBudget : undefined}
+								dashboard={trackioDashboards.at(-1)}
+								workflow={workflowSpaces.at(-1)}
+								{papers}
+								registry={mlRegistry.summary}
+							/>
+						{/if}
+						<!-- The composer box is a column so the ML Assistant strip can stack on
+					     top; this row is the composer proper and keeps its own layout. -->
+						<div class="flex w-full items-center">
+							{#if isRecording || isTranscribing}
+								<VoiceRecorder
+									{isTranscribing}
+									{isTouchDevice}
+									oncancel={() => {
+										isRecording = false;
+									}}
+									onconfirm={handleRecordingConfirm}
+									onsend={handleRecordingSend}
+									onerror={handleRecordingError}
+								/>
+							{:else if onDrag && isFileUploadEnabled}
+								<FileDropzone bind:files bind:onDrag mimeTypes={activeMimeTypes} />
+							{:else}
+								<div
+									class="flex w-full flex-1 rounded-xl border-none bg-transparent"
+									class:paste-glow={pastedLongContent}
+								>
+									{#if lastIsError}
+										<ChatInput
+											value="Sorry, something went wrong. Please try again."
+											disabled={true}
+										/>
+									{:else}
+										<ChatInput
+											placeholder={isReadOnly
+												? "This conversation is read-only."
+												: queueing
+													? "Add to the run, read at its next step"
+													: mlModeOn
+														? ML_ASSISTANT_PLACEHOLDER
+														: "Ask anything"}
+											{loading}
+											bind:value={draft}
+											bind:files
+											mimeTypes={activeMimeTypes}
+											onsubmit={handleSubmit}
+											{onPaste}
+											disabled={isReadOnly || lastIsError}
+											{modelIsMultimodal}
+											{modelSupportsTools}
+											showMlPill={mlPillVisible}
+											slashCommands={sideQuestionPanel ? [BTW_COMMAND] : []}
+											bind:focused
+										/>
+									{/if}
+
+									{#if loading && queueing && draft.trim() && !draftIsSideQuestion}
+										<button
+											class="absolute right-11 bottom-2 btn size-8 self-end rounded-full border bg-black! text-white! shadow transition-none sm:right-10 sm:size-7 dark:border-transparent dark:bg-white! dark:text-black!"
+											type="submit"
+											aria-label="Queue message"
+											title="Queue: read at the next step"
+											name="submit"
+										>
+											<IconArrowUp />
+										</button>
+									{/if}
+									{#if loading && !draftIsSideQuestion}
+										<StopGeneratingBtn
+											onClick={() => {
+												hapticError();
+												onstop?.();
+											}}
+											showBorder={true}
+											classNames="absolute bottom-2 right-2 size-8 sm:size-7 self-end rounded-full border bg-white text-black shadow-sm transition-none dark:border-transparent dark:bg-gray-600 dark:text-white"
+										/>
+									{:else}
+										{#if transcriptionEnabled}
+											<button
+												type="button"
+												class="absolute right-10 bottom-2 mr-1.5 btn size-8 self-end rounded-full border bg-white/50 text-gray-500 transition-none hover:bg-gray-50 hover:text-gray-700 sm:right-9 sm:size-7 dark:border-transparent dark:bg-gray-600/50 dark:text-gray-300 dark:hover:bg-gray-500 dark:hover:text-white"
+												disabled={isReadOnly}
+												onclick={() => {
+													isRecording = true;
+												}}
+												aria-label="Start voice recording"
+											>
+												<IconMic class="size-4" />
+											</button>
+										{/if}
+										<button
+											class="absolute right-2 bottom-2 btn size-8 self-end rounded-full border bg-white text-black shadow transition-none enabled:hover:bg-white enabled:hover:shadow-inner sm:size-7 dark:border-transparent dark:bg-gray-600 dark:text-white dark:hover:enabled:bg-black {!draft ||
+											isReadOnly
+												? ''
+												: 'bg-black! text-white! dark:bg-white! dark:text-black!'}"
+											disabled={!draft || isReadOnly}
+											type="submit"
+											aria-label="Send message"
+											name="submit"
+										>
+											<IconArrowUp />
+										</button>
+									{/if}
+								</div>
+							{/if}
+						</div>
+					</form>
+				{/if}
 				<div
 					class={{
 						"mt-1.5 flex h-5 items-center self-stretch px-0.5 text-xs whitespace-nowrap text-gray-400/90 max-md:mb-2 max-sm:gap-2": true,
@@ -1605,17 +1840,23 @@
 		</div>
 	</div>
 
-	<ArtifactPanel
-		registry={artifactRegistry}
-		items={paneItems}
-		{loading}
-		canScreenshot={!shared && !isReadOnly && mimeMatchesAllowlist("image/png", activeMimeTypes)}
-		onsend={canSendFix ? sendFixRequest : undefined}
-	/>
-	<TrackioPane items={paneItems} />
-	{#if ML_ASSISTANT_MODE}
-		<MlRegistryPane />
-	{/if}
+	<SidePaneHost items={paneItems} {papers} canQuote={!shared && !isReadOnly}>
+		{#snippet views(resizing)}
+			<ArtifactPanel
+				registry={artifactRegistry}
+				{loading}
+				{resizing}
+				canScreenshot={!shared && !isReadOnly && mimeMatchesAllowlist("image/png", activeMimeTypes)}
+				onsend={canSendFix ? sendFixRequest : undefined}
+			/>
+			{#if ML_ASSISTANT_MODE}
+				<MlRegistryPane />
+				{#if !shared}
+					<MlReviewPane />
+				{/if}
+			{/if}
+		{/snippet}
+	</SidePaneHost>
 </div>
 
 <style>

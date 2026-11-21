@@ -23,6 +23,8 @@ export type GETModelsResponse = Array<{
 	unlisted: boolean;
 	hasInferenceAPI: boolean;
 	isRouter: boolean;
+	/** provider HuggingChat uses when the user has not picked one, only while the router lists it */
+	defaultProvider?: string;
 }>;
 
 export type GETModelResponse = GETModelsResponse[number] & {
@@ -46,4 +48,8 @@ export interface FeatureFlags {
 	taskModelId: string | null;
 	/** Models ML Intern conversations may use, in order; the first is the default. Empty when the mode is off. */
 	mlAssistantModels: string[];
+	/** Set when this user opted in to syncing MCP servers for personal Slack sessions. */
+	slackMcpSync: { saved: boolean } | null;
+	/** whether the user token can push a trace to a hub dataset */
+	traceDatasetPush: boolean;
 }

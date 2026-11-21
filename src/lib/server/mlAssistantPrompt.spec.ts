@@ -4,11 +4,13 @@ import {
 	ML_ASSISTANT_PREPROMPT,
 	mlAssistantPreprompt,
 	mlAssistantSessionContext,
+	mlAssistantTurnContext,
 } from "./mlAssistantPrompt";
 import { VIRTUAL_FILES_TOOL_PREPROMPT } from "$lib/server/mlFiles/prompt";
 import { buildToolPreprompt } from "./textGeneration/utils/toolPrompt";
 import { ARTIFACTS_SYSTEM_PROMPT } from "./textGeneration/artifacts";
 import { askUserQuestionBuiltin } from "./textGeneration/builtinTools/askUserQuestion";
+import { REQUEST_REVIEW_PREPROMPT } from "./textGeneration/builtinTools/requestReviewDefinition";
 import type { OpenAiTool } from "$lib/server/mcp/tools";
 
 const tool = (name: string): OpenAiTool =>
@@ -302,7 +304,7 @@ describe("ML Assistant tool-keyed doctrine", () => {
 		// unused — a queue and an image pull to find a typo. Stated at both
 		// surfaces: the jobs contract and the sandbox rules.
 		expect(inMode([tool("hf_jobs")])).toContain("When hf_sandbox is on offer");
-		expect(inMode([tool("hf_sandbox")])).toContain("go here FIRST");
+		expect(inMode([tool("hf_sandbox")])).toContain("do the whole pre-flight there FIRST");
 	});
 
 	it("keeps the smoke test on the real flavor and the real shape", () => {
@@ -315,11 +317,12 @@ describe("ML Assistant tool-keyed doctrine", () => {
 		expect(ML_ASSISTANT_PREPROMPT).toContain("Memory and speed cannot");
 	});
 
-	it("says the sandbox cannot stand in for the GPU smoke test", () => {
-		// The other half of the same incident: "fast checks go here FIRST" read as
-		// permission to skip the GPU smoke entirely. Both rules ship together or
-		// the boundary is ambiguous again.
-		expect(inMode([tool("hf_sandbox")])).toContain("cannot do is stand in for the GPU smoke test");
+	it("puts the sandbox on the job's flavor, so it is the GPU smoke test", () => {
+		const sandbox = inMode([tool("hf_sandbox")]);
+
+		expect(sandbox).toContain("create the sandbox on the flavor the job will run on");
+		expect(sandbox).toContain("at the real batch size and sequence length");
+		expect(sandbox).toContain("refuses a session's first GPU job until a sandbox exists");
 	});
 
 	it("pins dependencies to a resolved current release, not a remembered one", () => {
@@ -503,6 +506,19 @@ describe("ML Assistant system message size", () => {
 		// 36k to 39k for establishing what the result is for, argued by finished classifiers that
 		// passed their eval and failed in use because they trained on truncated inputs nobody asked
 		// for, hours of compute each, it landed at 38,332
+		//
+		// 39k to 39,500 for request_review, argued by data trained on or pushed before anyone looked
+		// at it and golden sets labelled with the model guesses in view, most of its guidance lives
+		// in the tool description and the preprompt is held to 600 characters below, but main had
+		// already reached 38,983 so even the short form needed the raise, it landed at 39,216
+		//
+		// 39,500 to 40,500 for the resubmit loop, argued by production: after a failed job the agent
+		// reproduced it in a sandbox before resubmitting in 11% of 600 mined cases (evals/decisions),
+		// and fixed-and-resubmitted untested in 79%, it landed at 39,987
+		//
+		// 40,500 to 42k for a collision, not content: #2750 (the repo card's next-step buttons) and
+		// the resubmit loop above each raised 39,500 to 40,500 on a base without the other, and the
+		// sandbox-on-the-job's-flavor rules (#2745) landed on top, so main reached 41,295
 		const composed = [
 			buildToolPreprompt(
 				// The worst case, not a typical one: every preset tool plus the web
@@ -512,6 +528,7 @@ describe("ML Assistant system message size", () => {
 					...HF_TOOLS,
 					tool("hf_fs_write"),
 					tool("ask_user_question"),
+					tool("request_review"),
 					tool("update_plan"),
 					tool("github_find_examples"),
 					tool("web_search_exa"),
@@ -519,7 +536,11 @@ describe("ML Assistant system message size", () => {
 					tool("write_file"),
 				],
 				undefined,
-				[askUserQuestionBuiltin, { name: "write_file", preprompt: VIRTUAL_FILES_TOOL_PREPROMPT }],
+				[
+					askUserQuestionBuiltin,
+					{ name: "request_review", preprompt: REQUEST_REVIEW_PREPROMPT },
+					{ name: "write_file", preprompt: VIRTUAL_FILES_TOOL_PREPROMPT },
+				],
 				{ mlAssistant: true }
 			),
 			ML_ASSISTANT_PREPROMPT,
@@ -527,7 +548,16 @@ describe("ML Assistant system message size", () => {
 			ARTIFACTS_SYSTEM_PROMPT,
 		].join("\n\n");
 
-		expect(composed.length).toBeLessThan(39_000);
+		expect(composed.length).toBeLessThan(42_000);
+	});
+
+	it("keeps the review guidance short, the rest lives in the tool description", () => {
+		expect(REQUEST_REVIEW_PREPROMPT.length).toBeLessThanOrEqual(600);
+		expect(REQUEST_REVIEW_PREPROMPT).toContain('"after_answer"');
+		expect(REQUEST_REVIEW_PREPROMPT).toContain("Over 20 records go in a file");
+		expect(REQUEST_REVIEW_PREPROMPT).toContain("when the user asks to see data");
+		expect(REQUEST_REVIEW_PREPROMPT).toContain("before you train or push");
+		expect(REQUEST_REVIEW_PREPROMPT).toContain("One review per round");
 	});
 });
 
@@ -536,7 +566,7 @@ describe("ML Assistant session context", () => {
 
 	it("stamps the user so the namespace rule has something to read", () => {
 		expect(mlAssistantSessionContext({ username: "pngwn", timezone: "UTC", now })).toBe(
-			"[Session context: Date=2026-08-24, Time=09:07, Timezone=UTC, User=pngwn]"
+			"[Session context: Date=2026-08-24, Timezone=UTC, User=pngwn]"
 		);
 	});
 
@@ -561,9 +591,48 @@ describe("ML Assistant session context", () => {
 		expect(stamped).not.toContain("Timezone=");
 	});
 
-	it("stamps the time in the user's zone", () => {
-		expect(mlAssistantSessionContext({ timezone: "Europe/Berlin", now })).toContain("Time=11:07");
+	it("stamps the date in the user's zone", () => {
+		const late = new Date("2026-08-24T23:07:00Z");
+		expect(mlAssistantSessionContext({ timezone: "Europe/Berlin", now: late })).toContain(
+			"Date=2026-08-25"
+		);
 		expect(mlAssistantSessionContext({ now })).not.toContain("Timezone=");
+	});
+
+	it("keeps what changes between turns out of the system prompt", () => {
+		// The system prompt starts every request: a minute or a settled job changing
+		// it makes the provider prefill the whole conversation again.
+		const stamped = mlAssistantSessionContext({ username: "pngwn", timezone: "UTC", now });
+		expect(stamped).not.toContain("Time=");
+		expect(stamped).not.toContain("Budget=");
+		expect(
+			mlAssistantSessionContext({
+				username: "pngwn",
+				timezone: "UTC",
+				now: new Date("2026-08-24T09:58:00Z"),
+			})
+		).toBe(stamped);
+	});
+});
+
+describe("ML Assistant turn context", () => {
+	const now = new Date("2026-08-24T09:07:00Z");
+
+	it("stamps the time in the user's zone", () => {
+		expect(mlAssistantTurnContext({ timezone: "Europe/Berlin", now })).toBe(
+			"[Turn context: Time=11:07]"
+		);
+		expect(mlAssistantTurnContext({ timezone: "Not/AZone", now })).toContain("Time=");
+	});
+
+	it("carries the budget", () => {
+		expect(
+			mlAssistantTurnContext({
+				timezone: "UTC",
+				now,
+				budget: { remaining: "$7.80", total: "$10.00" },
+			})
+		).toBe("[Turn context: Time=09:07, Budget=$7.80 remaining of $10.00]");
 	});
 });
 
@@ -612,23 +681,13 @@ describe("ML Assistant billing", () => {
 	it("stamps who pays after the user, only when someone other than the user does", () => {
 		expect(
 			mlAssistantSessionContext({ username: "pngwn", timezone: "UTC", now, billTo: "acme" })
-		).toBe("[Session context: Date=2026-08-24, Time=09:07, Timezone=UTC, User=pngwn, BillTo=acme]");
+		).toBe("[Session context: Date=2026-08-24, Timezone=UTC, User=pngwn, BillTo=acme]");
 		expect(mlAssistantSessionContext({ username: "pngwn", timezone: "UTC", now })).not.toContain(
 			"BillTo="
 		);
 		expect(
 			mlAssistantSessionContext({ username: "pngwn", timezone: "UTC", now, billTo: "  " })
 		).not.toContain("BillTo=");
-	});
-
-	it("keeps the budget last, after the payer", () => {
-		const stamped = mlAssistantSessionContext({
-			username: "pngwn",
-			now,
-			billTo: "acme",
-			budget: { remaining: "$7.80", total: "$10.00" },
-		});
-		expect(stamped).toContain("User=pngwn, BillTo=acme, Budget=$7.80 remaining of $10.00]");
 	});
 
 	it("keeps BillTo a valid namespace and stamps the resource group separately", () => {

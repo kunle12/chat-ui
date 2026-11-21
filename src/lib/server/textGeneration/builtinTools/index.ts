@@ -11,8 +11,11 @@ import { createSandboxTool } from "./sandboxTool";
 import { createJobCheckTool } from "./jobCheckTool";
 import { createTrackioTool } from "./createTrackioTool";
 import { createReadTrackioTool } from "./readTrackioTool";
+import { createOpenPaperTool, createReadPaperTool } from "./paperTools";
+import { createWorkflowTool, workflowsEnabled } from "./createWorkflowTool";
 import { createFileTools } from "./fileTools";
 import { createImportFileTool } from "./importFileTool";
+import { createRequestReviewTool } from "./requestReviewTool";
 import type { BuiltinTool } from "./types";
 
 export type { BuiltinTool, BuiltinToolContext, BuiltinToolResult } from "./types";
@@ -22,8 +25,11 @@ export { SANDBOX_TOOL_NAME, isSandboxTool } from "./sandboxTool";
 export { JOB_CHECK_TOOL_NAME, isJobCheckTool } from "./jobCheckTool";
 export { CREATE_TRACKIO_TOOL_NAME } from "./createTrackioTool";
 export { READ_TRACKIO_TOOL_NAME } from "./readTrackioTool";
+export { OPEN_PAPER_TOOL_NAME, READ_PAPER_TOOL_NAME } from "./paperTools";
+export { CREATE_WORKFLOW_TOOL_NAME } from "./createWorkflowTool";
 export { WRITE_FILE_TOOL_NAME, EDIT_FILE_TOOL_NAME, READ_FILE_TOOL_NAME } from "./fileTools";
 export { IMPORT_FILE_TOOL_NAME } from "./importFileTool";
+export { REQUEST_REVIEW_TOOL_NAME } from "./requestReviewDefinition";
 export { isNestedAgentTool } from "./nestedAgent";
 
 /**
@@ -48,6 +54,8 @@ export function getEnabledBuiltinTools(params: {
 	const virtualFiles = mlVirtualFilesEnabled(params.conv);
 	return [
 		askUserQuestionBuiltin,
+		// its records and answers are virtual files, so it goes wherever they go
+		...(virtualFiles ? [createRequestReviewTool(params.conv, () => params.hfToken)] : []),
 		createPlanTool(params.conv),
 		createWaitTool({ serviceEvents: mlServiceEventsEnabled() }),
 		...githubGroundingBuiltins(params.conv._id),
@@ -59,6 +67,16 @@ export function getEnabledBuiltinTools(params: {
 			() => params.conv.messages ?? [],
 			() => params.hfToken
 		),
+		createOpenPaperTool(),
+		createReadPaperTool(),
+		...(workflowsEnabled()
+			? [
+					createWorkflowTool(
+						() => params.namespace,
+						() => params.hfToken
+					),
+				]
+			: []),
 		...(virtualFiles ? [...createFileTools(params.conv), createImportFileTool(params.conv)] : []),
 	];
 }

@@ -4,6 +4,8 @@ import { loginEnabled } from "$lib/server/auth";
 import { config } from "$lib/server/config";
 import type { FeatureFlags } from "$lib/server/api/types";
 import { mlAssistantModelIds } from "$lib/server/mlAssistantModels";
+import { mcpSyncStatus } from "$lib/server/mcp/savedSelection";
+import { getUserHubWriteToken } from "$lib/server/apiToken";
 
 export const GET: RequestHandler = async ({ locals }) => {
 	// Mirror the title-generation resolution (generateFromDefaultEndpoint): the
@@ -28,5 +30,7 @@ export const GET: RequestHandler = async ({ locals }) => {
 		transcriptionEnabled: !!config.get("TRANSCRIPTION_MODEL"),
 		taskModelId,
 		mlAssistantModels: mlAssistantModelIds(),
+		slackMcpSync: locals.user ? await mcpSyncStatus(locals.user._id) : null,
+		traceDatasetPush: !!getUserHubWriteToken(locals),
 	} satisfies FeatureFlags);
 };

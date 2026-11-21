@@ -8,7 +8,11 @@
 	import { trackioStatus } from "$lib/stores/trackioStatus.svelte";
 	import { sidePane } from "$lib/stores/sidePane.svelte";
 	import type { TrackioDashboard } from "$lib/utils/trackio";
+	import type { WorkflowSpace } from "$lib/utils/workflowSpace";
+	import type { PaperRef } from "$lib/utils/paper";
 	import CarbonBox from "~icons/carbon/box";
+	import CarbonFlow from "~icons/carbon/flow";
+	import CarbonDocumentPdf from "~icons/carbon/document-pdf";
 
 	interface Props {
 		/** Collapses the strip out of the composer when false, rather than unmounting it. */
@@ -22,6 +26,9 @@
 		onbudgetchange?: (leftUsd: number) => void;
 		/** The run's newest Trackio dashboard, if it has named one. */
 		dashboard?: TrackioDashboard;
+		workflow?: WorkflowSpace;
+		/** papers open_paper opened in this conversation, oldest first */
+		papers?: PaperRef[];
 		/** the control stays hidden until the registry holds anything */
 		registry?: MlRegistrySummary;
 	}
@@ -34,6 +41,8 @@
 		budget,
 		onbudgetchange,
 		dashboard,
+		workflow,
+		papers = [],
 		registry,
 	}: Props = $props();
 
@@ -68,6 +77,41 @@
 			sidePane.view === "trackio" &&
 			sidePane.trackio?.url === dashboard.url
 	);
+
+	$effect(() => {
+		if (!workflow) return;
+		return trackioStatus.watch(workflow.url, workflow.spaceId);
+	});
+	let workflowStatus = $derived(workflow ? trackioStatus.status(workflow.url) : undefined);
+
+	let workflowLive = $derived(workflowStatus !== "failed");
+	let workflowShowing = $derived(
+		!!workflow &&
+			sidePane.open &&
+			sidePane.view === "workflow" &&
+			sidePane.workflow?.url === workflow.url
+	);
+
+	function toggleWorkflow() {
+		if (!workflow || !workflowLive) return;
+		if (workflowShowing) sidePane.close();
+		else sidePane.openWorkflow(workflow);
+	}
+
+	let paperShowing = $derived(sidePane.open && sidePane.view === "paper");
+	/** the paper read most recently, else the newest one opened */
+	let paperToOpen = $derived.by(() => {
+		for (const id of sidePane.recent) {
+			const paper = papers.find((p) => `paper:${p.id}` === id);
+			if (paper) return paper;
+		}
+		return papers.at(-1);
+	});
+
+	function togglePaper() {
+		if (paperShowing) sidePane.close();
+		else if (paperToOpen) sidePane.openPaper(paperToOpen.id, paperToOpen.title);
+	}
 
 	function toggleDashboard() {
 		if (!dashboard || !dashboardLive) return;
@@ -271,8 +315,58 @@
 			</button>
 		{/if}
 
+		{#if workflow}
+			<button
+				type="button"
+				disabled={!workflowLive}
+				class={[
+					"ml-control flex flex-none items-center justify-center gap-[6px] px-2 py-[5px]",
+					"size-7 rounded-full @min-[480px]:size-auto @min-[480px]:rounded-[6px]",
+					"text-[13px] leading-none font-medium text-[#57534e] dark:text-[#a8a29e]",
+					workflowLive
+						? "cursor-pointer hover:bg-black/5 hover:text-[#1c1917] dark:hover:bg-white/[.07] dark:hover:text-[#f5f5f4]"
+						: "cursor-default opacity-60",
+				]}
+				title={workflowShowing
+					? `Close the workflow: ${workflow.label}`
+					: workflowLive
+						? `Open the workflow: ${workflow.label}`
+						: "The workflow never came up"}
+				aria-label={workflowStatus === "building"
+					? `Workflow, building: ${workflow.label}`
+					: `Workflow: ${workflow.label}`}
+				aria-pressed={workflowLive ? workflowShowing : undefined}
+				onclick={toggleWorkflow}
+			>
+				<CarbonFlow
+					class="size-[14px] shrink-0 {workflowStatus === 'building' ? 'animate-pulse' : ''}"
+				/>
+				<span class="hidden @min-[480px]:inline">Workflow</span>
+			</button>
+		{/if}
+
+		{#if paperToOpen}
+			<button
+				type="button"
+				class={[
+					"ml-control flex flex-none items-center justify-center gap-[6px] px-2 py-[5px]",
+					"size-7 rounded-full @min-[480px]:size-auto @min-[480px]:rounded-[6px]",
+					"cursor-pointer text-[13px] leading-none font-medium text-[#57534e] hover:bg-black/5 hover:text-[#1c1917] dark:text-[#a8a29e] dark:hover:bg-white/[.07] dark:hover:text-[#f5f5f4]",
+				]}
+				title={paperShowing ? "Close the paper reader" : `Read: ${paperToOpen.title}`}
+				aria-label={papers.length > 1 ? `Papers (${papers.length})` : `Paper: ${paperToOpen.title}`}
+				aria-pressed={paperShowing}
+				onclick={togglePaper}
+			>
+				<CarbonDocumentPdf class="size-[14px] shrink-0" />
+				<span class="hidden @min-[480px]:inline"
+					>{papers.length > 1 ? `Papers (${papers.length})` : "Paper"}</span
+				>
+			</button>
+		{/if}
+
 		{#if budget}
-			{#if dashboard || registryVisible}
+			{#if dashboard || workflow || paperToOpen || registryVisible}
 				<!-- Negative margin pulls its neighbours to 8px, inside the 14px group gap. -->
 				<span
 					aria-hidden="true"
