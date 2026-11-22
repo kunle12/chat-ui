@@ -131,18 +131,16 @@
 
 <div class="sticky top-0 z-10 flex flex-none items-center gap-2 px-2 pt-3 pb-3 max-sm:pt-0">
 	<a
-		class="lcars-cap-r flex h-10 min-w-0 flex-1 items-center gap-2 bg-lcars-peach px-3 text-lcars-on-peach select-none"
+		class="ui-cap-r flex h-10 min-w-0 flex-1 items-center gap-2 bg-lcars-peach px-3 text-lcars-on-peach select-none"
 		href="{publicConfig.PUBLIC_ORIGIN}{base}/"
 	>
 		<Logo classNames="size-4 flex-none opacity-80 mix-blend-multiply dark:mix-blend-normal" />
-		<span class="lcars-label truncate text-[0.6875rem] font-bold"
-			>{publicConfig.PUBLIC_APP_NAME}</span
-		>
+		<span class="ui-label truncate text-[0.6875rem] font-bold">{publicConfig.PUBLIC_APP_NAME}</span>
 	</a>
 	<a
 		href={`${base}/`}
 		onclick={handleNewChatClick}
-		class="lcars-btn h-10 flex-none bg-lcars-amber px-3.5 text-lcars-on-amber shadow-xs hover:shadow-none"
+		class="ui-btn h-10 flex-none bg-lcars-amber px-3.5 text-lcars-on-amber shadow-xs hover:shadow-none"
 		title="Ctrl/Cmd + Shift + O"
 	>
 		+ New Chat
@@ -150,13 +148,13 @@
 </div>
 
 <div
-	class="lcars-panel scrollbar-custom flex touch-pan-y flex-col gap-1 overflow-y-auto rounded-r-[22px] border-l-0 px-2.5 pt-2 pb-3 text-[.9rem]"
+	class="ui-panel scrollbar-custom flex touch-pan-y flex-col gap-1 overflow-y-auto rounded-r-[22px] border-l-0 px-2.5 pt-2 pb-3 text-[.9rem]"
 >
 	<div class="flex flex-col gap-0.5">
 		{#each Object.entries(groupedConversations) as [group, convs]}
 			{#if convs.length}
-				<h4 class="lcars-label mt-4 mb-1.5 flex items-center gap-2 pl-1 text-lcars-dim first:mt-0">
-					<span class="lcars-cap-r h-[5px] w-3.5 flex-none bg-lcars-sky"></span>
+				<h4 class="ui-label mt-4 mb-1.5 flex items-center gap-2 pl-1 text-lcars-dim first:mt-0">
+					<span class="ui-cap-r h-[5px] w-3.5 flex-none bg-lcars-sky"></span>
 					{titles[group]}
 				</h4>
 				{#each convs as conv (String(conv.id))}
@@ -190,11 +188,11 @@
 					href="https://huggingface.co/{user.username}"
 					target="_blank"
 					rel="noopener noreferrer"
-					class="lcars-label min-w-0 truncate text-[0.625rem] text-lcars-muted hover:underline"
+					class="ui-label min-w-0 truncate text-[0.625rem] text-lcars-muted hover:underline"
 					>{user.username}</a
 				>
 			{:else}
-				<span class="lcars-label min-w-0 truncate text-[0.625rem] text-lcars-muted"
+				<span class="ui-label min-w-0 truncate text-[0.625rem] text-lcars-muted"
 					>{user?.username || user?.email}</span
 				>
 			{/if}
@@ -204,13 +202,13 @@
 					href="https://huggingface.co/subscribe/pro?from=HuggingChat"
 					target="_blank"
 					rel="noopener noreferrer"
-					class="lcars-chip ml-auto text-[0.5625rem] text-lcars-muted"
+					class="ui-chip ml-auto text-[0.5625rem] text-lcars-muted"
 				>
 					<IconPro />
 					Get PRO
 				</a>
 			{:else if publicConfig.isHuggingChat && $isPro === true}
-				<span class="lcars-chip ml-auto text-lcars-muted">
+				<span class="ui-chip ml-auto text-lcars-muted">
 					<IconPro />
 					PRO
 				</span>
@@ -222,8 +220,8 @@
 		class="flex h-8 flex-none items-center gap-1.5 rounded-full px-2.5 text-lcars-muted hover:bg-lcars-panel hover:text-lcars-ink max-sm:h-10"
 		onclick={handleNavItemClick}
 	>
-		<span class="lcars-label text-[0.625rem]">Models</span>
-		<span class="lcars-chip ml-auto bg-lcars-sky/25 text-lcars-on-sky">{nModels}</span>
+		<span class="ui-label text-[0.625rem]">Models</span>
+		<span class="ui-chip ml-auto bg-lcars-sky/25 text-lcars-on-sky">{nModels}</span>
 	</a>
 
 	{#if user?.username || user?.email}
@@ -231,9 +229,9 @@
 			onclick={() => (showMcpModal = true)}
 			class="flex h-8 flex-none items-center gap-1.5 rounded-full px-2.5 text-lcars-muted hover:bg-lcars-panel hover:text-lcars-ink max-sm:h-10"
 		>
-			<span class="lcars-label text-[0.625rem]">MCP Servers</span>
+			<span class="ui-label text-[0.625rem]">MCP Servers</span>
 			{#if $enabledServersCount > 0}
-				<span class="lcars-chip ml-auto bg-lcars-sky/25 text-lcars-on-sky">
+				<span class="ui-chip ml-auto bg-lcars-sky/25 text-lcars-on-sky">
 					{$enabledServersCount}
 				</span>
 			{/if}
@@ -246,7 +244,7 @@
 			class="flex h-8 flex-none grow items-center gap-1.5 rounded-full px-2.5 text-lcars-muted hover:bg-lcars-panel hover:text-lcars-ink max-sm:h-10"
 			onclick={handleNavItemClick}
 		>
-			<span class="lcars-label text-[0.625rem]">Settings</span>
+			<span class="ui-label text-[0.625rem]">Settings</span>
 		</a>
 		<button
 			onclick={() => {

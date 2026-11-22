@@ -89,7 +89,7 @@
 		{conv.id === page.params.id ? 'bg-lcars-panel text-lcars-ink' : ''}"
 >
 	<span
-		class="lcars-cap-r h-5 w-[3px] flex-none {conv.id === page.params.id
+		class="ui-cap-r h-5 w-[3px] flex-none {conv.id === page.params.id
 			? 'bg-lcars-amber'
 			: conv.mlAssistant
 				? 'bg-lcars-sky'

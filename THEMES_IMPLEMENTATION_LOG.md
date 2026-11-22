@@ -38,15 +38,15 @@ Status values: `TODO` · `IN PROGRESS` · `BLOCKED` · `DEFERRED` · `DONE`.
 
 ## 2. Progress dashboard
 
-| Phase | Scope                                        | Status | Progress | Owner | Started | Completed |
-| ----- | -------------------------------------------- | ------ | -------- | ----- | ------- | --------- |
-| P0    | Contract, layering contract, primitive hooks | TODO   | 0 / 8    | —     | —       | —         |
-| P1    | Runtime, SSR, persistence, picker            | TODO   | 0 / 9    | —     | —       | —         |
-| P2    | LCARS under the contract                     | TODO   | 0 / 8    | —     | —       | —         |
-| P3    | Classic theme                                | TODO   | 0 / 6    | —     | —       | —         |
-| P4    | Office theme                                 | TODO   | 0 / 8    | —     | —       | —         |
-| P5    | External plugin loader                       | TODO   | 0 / 8    | —     | —       | —         |
-| P6    | Tests, previews, docs                        | TODO   | 0 / 8    | —     | —       | —         |
+| Phase | Scope                                        | Status | Progress | Owner      | Started    | Completed  |
+| ----- | -------------------------------------------- | ------ | -------- | ---------- | ---------- | ---------- |
+| P0    | Contract, layering contract, primitive hooks | DONE   | 8 / 8    | code agent | 2026-11-22 | 2026-11-22 |
+| P1    | Runtime, SSR, persistence, picker            | TODO   | 0 / 9    | —          | —          | —          |
+| P2    | LCARS under the contract                     | TODO   | 0 / 8    | —          | —          | —          |
+| P3    | Classic theme                                | TODO   | 0 / 6    | —          | —          | —          |
+| P4    | Office theme                                 | TODO   | 0 / 8    | —          | —          | —          |
+| P5    | External plugin loader                       | TODO   | 0 / 8    | —          | —          | —          |
+| P6    | Tests, previews, docs                        | TODO   | 0 / 8    | —          | —          | —          |
 
 Update the counts as tasks complete. A phase is `DONE` only when its acceptance criteria are
 recorded as passing in §7.
@@ -59,26 +59,31 @@ recorded as passing in §7.
 hooks exist for every shape the target themes must change; CI guards the Tailwind
 variable-emission assumption.
 
-- [ ] **P0-01** Create `src/lib/themes/types.ts`: manifest schema (`apiVersion`, id regex,
+- [x] **P0-01** Create `src/lib/themes/types.ts`: manifest schema (`apiVersion`, id regex,
       modes, chrome, labels, tokens, css, fonts, preview), token types, per-token value
       grammar (§6.2.1 of `THEMES.md`).
-- [ ] **P0-02** Encode the required-token list as data (one source used by types, validator,
+- [x] **P0-02** Encode the required-token list as data (one source used by types, validator,
       wiring test and docs).
-- [ ] **P0-03** Regression test for Tailwind output: static utilities emit
+- [x] **P0-03** Regression test for Tailwind output: static utilities emit
       `var(--color-*)` **and** `/opacity` emits the `@supports color-mix(in oklab,
 var(--color-*))` branch (compile a fixture with the installed Tailwind API).
-- [ ] **P0-04** Rename `.lcars-*` primitives to `.ui-*` (aliases kept for one release) across
+- [x] **P0-04** Rename `.lcars-*` primitives to `.ui-*` (aliases kept for one release) across
       the 14 affected files (208 occurrences).
-- [ ] **P0-05** Add hooks: `.ui-bubble`, `.ui-msg-card`, `.ui-page`, `.ui-composer`,
+- [x] **P0-05** Add hooks: `.ui-bubble`, `.ui-msg-card`, `.ui-page`, `.ui-composer`,
       `.ui-header`, `.ui-scroll` (selectors may be empty initially; they must exist in
       markup so themes can target them).
-- [ ] **P0-06** Add the raw-color ratchet script + committed baseline
+- [x] **P0-06** Add the raw-color ratchet script + committed baseline
       (`npm run check:theme-colors`), with the exact counting commands in the script.
-- [ ] **P0-07** Capture the pre-change screenshot baseline (home, conversation, settings;
+- [x] **P0-07** Capture the pre-change screenshot baseline (home, conversation, settings;
       dark/light; 1440×900 + 390×844) for parity checks in P2.
-- [ ] **P0-08** Wire `THEMES_IMPLEMENTATION_LOG.md` into `THEMES.md`/`CLAUDE.md` (this file).
+- [x] **P0-08** Wire `THEMES_IMPLEMENTATION_LOG.md` into `THEMES.md`/`CLAUDE.md` (this file).
 
-**Acceptance evidence:** _fill in with commit + verification entries._
+**Acceptance evidence:** app visually identical (screenshot baseline committed at
+`tests/theme-baseline/`, captured before the rename); `npm run check` 0 errors / 0 warnings;
+`npm run lint` clean; `tailwind-vars.spec.ts` 3/3 green; ratchet green at baseline
+3048/484/212. No theme CSS exists yet, so "no unlayered structural rules" holds trivially.
+Hooks: all six present in markup (THEMES.md §7). Decisions D7–D11 resolved with the product
+owner and recorded in §11 (D12–D14).
 
 ---
 
@@ -231,19 +236,22 @@ committed; docs updated and linked.
 Append-only. Design rationale for D1–D6 is in `THEMES.md`; implementation decisions are
 recorded here as they are made.
 
-| ID  | Date       | Decision                                                                         | Rationale                                                                      | Status      |
-| --- | ---------- | -------------------------------------------------------------------------------- | ------------------------------------------------------------------------------ | ----------- |
-| D1  | 2026-11-22 | Token contract + `.ui-*` primitives + per-theme neutral ramp; no component forks | Only sustainable way to theme ~150 components; verified Tailwind var emission  | Accepted    |
-| D2  | 2026-11-22 | Built-ins may ship structural variants; plugins are CSS/token only               | Restoring the pre-LCARS look needs markup variants; plugins must not ship HTML | Accepted    |
-| D3  | 2026-11-22 | Theme id/mode flow through route data; cookie only for `<html>` attrs            | Avoid SSR/hydration chrome mismatch                                            | Accepted    |
-| D4  | 2026-11-22 | External themes are SSR-linked when selected                                     | Prevent FOUC on every cold load                                                | Accepted    |
-| D5  | 2026-11-22 | User-uploaded themes are token-only (flag off)                                   | CSS can exfiltrate/overlay; tokens are safe with a typed grammar               | Accepted    |
-| D6  | 2026-11-22 | Office fonts: Selawik + Carlito (both OFL 1.1), licenses bundled                 | Redistributable Segoe/Calibri metric equivalents                               | Accepted    |
-| D7  | —          | Office display name: "Office" vs "Document"                                      | Trademark caution                                                              | **Pending** |
-| D8  | —          | Sync `uiThemeMode` server-side                                                   | Cross-device consistency vs. extra writes                                      | **Pending** |
-| D9  | —          | Non-neutral color sweep in scope for this release vs. de-scoped                  | Office/classic acceptance depends on it                                        | **Pending** |
-| D10 | —          | Sidebar toggle cycles light↔dark vs. light→dark→system                           | Existing users never reach `system` from the toggle today                      | **Pending** |
-| D11 | —          | Default theme for new users (`lcars` vs `classic`)                               | Product call; `PUBLIC_DEFAULT_THEME` exists either way                         | **Pending** |
+| ID  | Date       | Decision                                                                         | Rationale                                                                                                                       | Status      |
+| --- | ---------- | -------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------- | ----------- |
+| D1  | 2026-11-22 | Token contract + `.ui-*` primitives + per-theme neutral ramp; no component forks | Only sustainable way to theme ~150 components; verified Tailwind var emission                                                   | Accepted    |
+| D2  | 2026-11-22 | Built-ins may ship structural variants; plugins are CSS/token only               | Restoring the pre-LCARS look needs markup variants; plugins must not ship HTML                                                  | Accepted    |
+| D3  | 2026-11-22 | Theme id/mode flow through route data; cookie only for `<html>` attrs            | Avoid SSR/hydration chrome mismatch                                                                                             | Accepted    |
+| D4  | 2026-11-22 | External themes are SSR-linked when selected                                     | Prevent FOUC on every cold load                                                                                                 | Accepted    |
+| D5  | 2026-11-22 | User-uploaded themes are token-only (flag off)                                   | CSS can exfiltrate/overlay; tokens are safe with a typed grammar                                                                | Accepted    |
+| D6  | 2026-11-22 | Office fonts: Selawik + Carlito (both OFL 1.1), licenses bundled                 | Redistributable Segoe/Calibri metric equivalents                                                                                | Accepted    |
+| D7  | —          | Office display name: "Office" vs "Document"                                      | Trademark caution                                                                                                               | **Pending** |
+| D8  | —          | Sync `uiThemeMode` server-side                                                   | Cross-device consistency vs. extra writes                                                                                       | **Pending** |
+| D9  | —          | Non-neutral color sweep in scope for this release vs. de-scoped                  | Office/classic acceptance depends on it                                                                                         | **Pending** |
+| D10 | 2026-11-22 | Sidebar toggle stays a two-way light↔dark switch                                 | No behavior change for existing users; `system` reachable from the Appearance picker (P1-08)                                    | Accepted    |
+| D11 | 2026-11-22 | Default theme is `lcars` for new and existing users                              | Zero visual change on deploy; also the coercion target for unknown/removed ids; `PUBLIC_DEFAULT_THEME` lets operators override  | Accepted    |
+| D12 | 2026-11-22 | Office display name: "Office" (user decision)                                    | Generic, low trademark risk; internal id unchanged                                                                              | Accepted    |
+| D13 | 2026-11-22 | Sync `uiThemeMode` server-side (user decision)                                   | Cross-device consistency; `system` syncs as a pointer, resolved client-side; reuses the debounced settings-save path            | Accepted    |
+| D14 | 2026-11-22 | Non-neutral sweep: high-traffic ~30 files only (user decision)                   | Keeps P4 acceptance ("no purple leakage on migrated surfaces"); ML Intern/review hex stays raw and is documented as intentional | Accepted    |
 
 Template for new entries:
 
@@ -255,14 +263,14 @@ Template for new entries:
 
 ## 12. Open questions (from `THEMES.md` §17)
 
-| #   | Question                                | Owner         | Resolution              |
-| --- | --------------------------------------- | ------------- | ----------------------- |
-| Q1  | Sync mode server-side?                  | product       | pending (D8)            |
-| Q2  | Default theme for new users?            | product       | pending (D11)           |
-| Q3  | Per-organization themes on HuggingChat? | product       | out of scope            |
-| Q4  | User theme uploads required?            | product       | proposed no; flag later |
-| Q5  | Office naming ("Office" vs "Document")? | product/legal | pending (D7)            |
-| Q6  | Fourth high-contrast theme?             | a11y          | candidate follow-up     |
+| #   | Question                                | Owner         | Resolution                     |
+| --- | --------------------------------------- | ------------- | ------------------------------ |
+| Q1  | Sync mode server-side?                  | product       | resolved yes (D8, D13)         |
+| Q2  | Default theme for new users?            | product       | resolved `lcars` (D11)         |
+| Q3  | Per-organization themes on HuggingChat? | product       | out of scope                   |
+| Q4  | User theme uploads required?            | product       | no; token-only flag later (D5) |
+| Q5  | Office naming ("Office" vs "Document")? | product/legal | resolved "Office" (D7, D12)    |
+| Q6  | Fourth high-contrast theme?             | a11y          | candidate follow-up            |
 
 ---
 
@@ -287,9 +295,32 @@ see `CLAUDE.md`); use targeted files with capped workers.
 
 ### 13.2 Implementation checks (append per task)
 
-| Date | Phase/Task | Command | Result | Notes |
-| ---- | ---------- | ------- | ------ | ----- |
-| —    | —          | —       | —      | —     |
+| Date       | Phase/Task        | Command                                                                                                               | Result                                                                                | Notes                                                                                                                                                      |
+| ---------- | ----------------- | --------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 2026-11-22 | P0-03             | `npx vitest run --project=server src/lib/themes/__tests__/tailwind-vars.spec.ts --no-file-parallelism --maxWorkers=1` | ✅ 3/3                                                                                | Static var rule, `/opacity` `@supports` branch, `@theme inline` raw var all confirmed against installed Tailwind 4.3.3                                     |
+| 2026-11-22 | P0-06             | `npm run check:theme-colors`                                                                                          | ✅ ok                                                                                 | Baseline committed: neutral 3048 / nonNeutral 484 / arbitraryHex 212 (matches design §12.1 counts)                                                         |
+| 2026-11-22 | P0 acceptance     | `npm run check`                                                                                                       | ✅ 0 errors, 0 warnings                                                               | After rename + hooks + types                                                                                                                               |
+| 2026-11-22 | P0 acceptance     | `npm run lint` (`prettier --check . && eslint .`)                                                                     | ✅ clean                                                                              | Prettier reformatted the new files once before passing                                                                                                     |
+| 2026-11-22 | P0-04/P0-05 sweep | `grep -rnoP '(?<![\w-])lcars-(label\|kicker\|…)(?![\w-])' src --include='*.svelte'`                                   | ✅ 0 remaining standalone primitives; 78 `bg-lcars-*`-style color utilities untouched | Color utilities are P2-03 scope, not P0; regex boundaries verified (`bg-lcars-panel-edge` not renamed)                                                     |
+| 2026-11-22 | P0-07             | `THEME_BASELINE=1 npx playwright test tests/theme-baseline.spec.ts --project=chromium`                                | ✅ 4/4 tests, 12 PNGs in `tests/theme-baseline/`                                      | Home/conversation/settings × dark/light × 1440×900/390×844; visually verified (LCARS shell intact)                                                         |
+| 2026-11-22 | P0 reflection     | Self-review of `types.ts` grammar + rename regex                                                                      | 1 bug found and fixed                                                                 | `THEME_VERSION_REGEX` rejected `1.2.30` (`\d$` instead of `\d+$`); grammar spot-checks: `url()`, `expression()` rejected; named colors excluded per §6.2.1 |
+
+**Environment findings (not code defects, but they cost time — recorded for the next agent):**
+
+1. `@tailwindcss/node@4.3.3`'s `compile()` throws `t is not a function` without
+   `onDependency` although the type marks it optional. Documented in the spec; if a future
+   version fixes the type/impl mismatch, the workaround is harmless.
+2. `svelte.config.js` loads `.env.local` with `override: true` at **build** time. A
+   developer `.env.local` containing `APP_BASE=/chat` bakes `paths.base=/chat` into the
+   production build, after which the whole e2e suite 404s (`page.goto("/")`) and the
+   `webServer` readiness probe on `E2E_APP_URL` never turns ready (404 is not an acceptable
+   status). The baseline capture had to build with `.env.local` temporarily moved aside.
+   **Follow-up candidate:** strip `APP_BASE` (and other local-only keys) in the e2e build
+   path, or document `APP_BASE` as e2e-incompatible.
+3. Playwright's `webServer` timeout (300 s) is not enough for a cold `npm run build` +
+   boot on this machine; the capture reused manually-started hermetic servers instead
+   (`tests/fixtures.ts`, `tests/mock-openai.ts`, `tests/mock-mcp.ts`, then `node server.js`
+   with the env from `playwright.config.ts`).
 
 ---
 
@@ -298,7 +329,7 @@ see `CLAUDE.md`); use targeted files with capped workers.
 | Date       | Agent/owner          | Summary                                                                          | Commits                            |
 | ---------- | -------------------- | -------------------------------------------------------------------------------- | ---------------------------------- |
 | 2026-11-22 | design agent         | Multi-theme design (`THEMES.md`), critical review, hardening, implementation log | `11854a99`, `f664e1cd`, `8ef4361d` |
-| —          | implementation agent | _start here: Phase 0_                                                            | —                                  |
+| 2026-11-22 | implementation agent | Phase 0 complete (contract, layering, hooks, ratchet, baseline); D7–D11 resolved | `948138d6`                         |
 
 ---
 

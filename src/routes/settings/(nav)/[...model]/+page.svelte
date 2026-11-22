@@ -229,7 +229,7 @@
 		<!-- Actions -->
 		<div class="mb-4 flex flex-wrap items-center gap-1.5">
 			<button
-				class="lcars-btn flex w-fit items-center bg-lcars-amber py-1.5 text-lcars-on-amber shadow-xs"
+				class="ui-btn flex w-fit items-center bg-lcars-amber py-1.5 text-lcars-on-amber shadow-xs"
 				name="Activate model"
 				onclick={(e) => {
 					e.stopPropagation();

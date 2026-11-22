@@ -1311,23 +1311,27 @@
 		{#if shareModalOpen}
 			<ShareConversationModal open={shareModalOpen} onclose={() => shareModal.close()} />
 		{/if}
-		<!-- LCARS panel header: conversation kicker, model capsule, stream readout. -->
-		<div class="relative z-[2] flex flex-none items-center gap-2.5 px-4 pt-3 pb-2.5 sm:px-5">
-			<span class="lcars-kicker min-w-0 truncate text-lcars-dim">
+		<!-- LCARS panel header: conversation kicker, model capsule, stream readout.
+		     .ui-header: theme hook (THEMES.md §7) — classic hides it, office
+		     restyles it as a title bar. -->
+		<div
+			class="ui-header relative z-[2] flex flex-none items-center gap-2.5 px-4 pt-3 pb-2.5 sm:px-5"
+		>
+			<span class="ui-kicker min-w-0 truncate text-lcars-dim">
 				{page.params?.id
 					? `conversation · ${String(page.params.id).slice(-6)}`
 					: "new transmission"}
 			</span>
 			<span
-				class="lcars-label lcars-cap-r hidden bg-lcars-peach px-2.5 py-1 text-[0.625rem] font-bold text-lcars-on-peach sm:inline-flex"
+				class="ui-label ui-cap-r hidden bg-lcars-peach px-2.5 py-1 text-[0.625rem] font-bold text-lcars-on-peach sm:inline-flex"
 				title={currentModel.displayName}
 			>
 				<span class="max-w-40 truncate">{currentModel.displayName}</span>
 			</span>
 			<span
-				class="lcars-label ml-auto flex flex-none items-center gap-2 text-[0.5625rem] text-lcars-dim"
+				class="ui-label ml-auto flex flex-none items-center gap-2 text-[0.5625rem] text-lcars-dim"
 			>
-				<span class="lcars-led" class:standby={!modelsReady}></span>
+				<span class="ui-led" class:standby={!modelsReady}></span>
 				{loading ? "Streaming" : modelsReady ? "Ready" : "Standing by"}
 			</span>
 			{#if canShare}
@@ -1354,8 +1358,9 @@
 		     keyboard-only users cannot scroll the conversation at all. Keyboard
 		     focus draws a soft inset ring instead of the browser's default
 		     outline around the whole pane; mouse focus draws nothing. -->
+		<!-- .ui-scroll: theme hook — scrollbar/selection wiring, office page margins. -->
 		<div
-			class="scrollbar-custom min-h-0 flex-1 [scrollbar-gutter:stable_both-edges] overflow-y-auto overscroll-contain focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-lcars-amber/60"
+			class="ui-scroll scrollbar-custom min-h-0 flex-1 [scrollbar-gutter:stable_both-edges] overflow-y-auto overscroll-contain focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-lcars-amber/60"
 			tabindex="0"
 			aria-label="Conversation messages"
 			use:chatScroll.attach={{
@@ -1364,9 +1369,10 @@
 			}}
 		>
 			<!-- @container: descendants (e.g. the per-message router-metadata row) adapt
-			     to the actual column width, which shrinks when the artifact panel is open -->
+			     to the actual column width, which shrinks when the artifact panel is open.
+			     .ui-page: theme hook — office wraps this column as a document page. -->
 			<div
-				class="@container mx-auto flex h-full max-w-3xl flex-col gap-6 px-5 pt-6 sm:gap-8 xl:max-w-4xl xl:pt-10"
+				class="ui-page @container mx-auto flex h-full max-w-3xl flex-col gap-6 px-5 pt-6 sm:gap-8 xl:max-w-4xl xl:pt-10"
 			>
 				{#if preprompt && preprompt != currentModel.preprompt}
 					<SystemPromptModal preprompt={preprompt ?? ""} />
@@ -1486,7 +1492,7 @@
 		     the scroller's scrollbar-gutter on classic-scrollbar platforms. -->
 		<div
 			bind:clientHeight={composerHeight}
-			class="lcars-composer-fade pointer-events-none absolute inset-x-0 bottom-0 z-0 mx-auto flex w-full
+			class="ui-composer-fade pointer-events-none absolute inset-x-0 bottom-0 z-0 mx-auto flex w-full
 			max-w-3xl flex-col items-center justify-center px-[calc(0.875rem+var(--scrollbar-gutter,0px))] pt-2 *:pointer-events-auto
 			max-sm:py-0 sm:px-[calc(1.25rem+var(--scrollbar-gutter,0px))]
 			md:pb-4 xl:max-w-4xl"
@@ -1621,7 +1627,9 @@
 							handleSubmit();
 						}}
 						class={{
-							"lcars-panel relative flex w-full max-w-4xl flex-1 flex-col rounded-[22px]": true,
+							// .ui-composer: theme hook — all three themes restyle the
+							// composer (pill / classic card / office comment box).
+							"ui-composer ui-panel relative flex w-full max-w-4xl flex-1 flex-col rounded-[22px]": true,
 							"transition-[border-color] duration-[350ms] ease-[ease] focus-within:ring-1 focus-within:ring-lcars-amber/40": true,
 							"border-lcars-marigold!": mlModeOn,
 							"opacity-30": isReadOnly,
@@ -1698,7 +1706,7 @@
 
 									{#if loading && queueing && draft.trim() && !draftIsSideQuestion}
 										<button
-											class="lcars-btn absolute right-11 bottom-2 size-8 self-end bg-lcars-sky p-0 text-lcars-on-sky shadow-sm transition-none sm:right-10 sm:size-7"
+											class="ui-btn absolute right-11 bottom-2 size-8 self-end bg-lcars-sky p-0 text-lcars-on-sky shadow-sm transition-none sm:right-10 sm:size-7"
 											type="submit"
 											aria-label="Queue message"
 											title="Queue: read at the next step"
@@ -1731,7 +1739,7 @@
 											</button>
 										{/if}
 										<button
-											class="lcars-beacon absolute right-2 bottom-2 flex size-8 items-center justify-center self-end transition-transform enabled:hover:scale-105 disabled:opacity-40 disabled:grayscale sm:size-7"
+											class="ui-beacon absolute right-2 bottom-2 flex size-8 items-center justify-center self-end transition-transform enabled:hover:scale-105 disabled:opacity-40 disabled:grayscale sm:size-7"
 											disabled={!draft || isReadOnly}
 											type="submit"
 											aria-label="Send message"

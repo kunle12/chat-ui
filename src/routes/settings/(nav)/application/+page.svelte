@@ -177,9 +177,7 @@
 {/snippet}
 
 <div class="flex w-full flex-col gap-4">
-	<h2 class="lcars-display text-center text-2xl text-lcars-ink md:text-left">
-		Application Settings
-	</h2>
+	<h2 class="ui-display text-center text-2xl text-lcars-ink md:text-left">Application Settings</h2>
 
 	{#if !!publicConfig.PUBLIC_COMMIT_SHA}
 		<div
@@ -207,7 +205,7 @@
 		</div>
 	{/if}
 	<div class="flex h-full flex-col gap-4 max-sm:pt-0">
-		<div class="lcars-panel rounded-[18px] px-3">
+		<div class="ui-panel rounded-[18px] px-3">
 			<div class="divide-y divide-gray-200 dark:divide-gray-700">
 				{#if publicConfig.PUBLIC_APP_DATA_SHARING === "1"}
 					<div class="flex items-start justify-between py-3">
@@ -302,7 +300,7 @@
 
 		<!-- Billing section (HuggingChat only) -->
 		{#if publicConfig.isHuggingChat && page.data.user}
-			<div class="lcars-panel rounded-[18px] px-3">
+			<div class="ui-panel rounded-[18px] px-3">
 				<div class="divide-y divide-gray-200 dark:divide-gray-700">
 					<!-- Bill usage to -->
 					<div class="flex items-start justify-between py-3">

@@ -139,7 +139,7 @@
 			</button>
 		{/if}
 		<h2
-			class="lcars-display right-0 left-0 mx-auto w-fit text-center text-2xl text-lcars-ink md:hidden"
+			class="ui-display right-0 left-0 mx-auto w-fit text-center text-2xl text-lcars-ink md:hidden"
 		>
 			Settings
 		</h2>
@@ -155,12 +155,12 @@
 	</div>
 	{#if !(showContent && browser && !isDesktop(window))}
 		<div
-			class="lcars-panel col-span-1 scrollbar-custom flex flex-col overflow-y-auto rounded-r-[22px] border-l-0 whitespace-nowrap max-md:-mx-4 max-md:h-full md:pr-4"
+			class="ui-panel col-span-1 scrollbar-custom flex flex-col overflow-y-auto rounded-r-[22px] border-l-0 whitespace-nowrap max-md:-mx-4 max-md:h-full md:pr-4"
 			class:max-md:hidden={showContent && browser}
 			bind:this={navContainer}
 		>
 			<!-- Section Headers -->
-			<h3 class="lcars-kicker px-3 pt-3 pb-1 text-lcars-dim md:text-left">Models</h3>
+			<h3 class="ui-kicker px-3 pt-3 pb-1 text-lcars-dim md:text-left">Models</h3>
 
 			<!-- Filter input -->
 			<div class="px-2 py-2">
@@ -195,7 +195,7 @@
 					aria-label="Configure {model.displayName}"
 				>
 					<span
-						class="lcars-cap-r h-5 w-[3px] flex-none {model.id === page.params.model
+						class="ui-cap-r h-5 w-[3px] flex-none {model.id === page.params.model
 							? 'bg-lcars-amber'
 							: [
 									'bg-lcars-peach/60',
@@ -299,7 +299,7 @@
 			<button
 				type="button"
 				onclick={() => goto(`${base}/settings/application`)}
-				class="lcars-btn sticky bottom-0 mt-2 mb-2 h-9 w-full flex-none gap-1.5 bg-lcars-amber text-[0.625rem] text-lcars-on-amber shadow-sm max-md:order-first"
+				class="ui-btn sticky bottom-0 mt-2 mb-2 h-9 w-full flex-none gap-1.5 bg-lcars-amber text-[0.625rem] text-lcars-on-amber shadow-sm max-md:order-first"
 				aria-label="Configure application settings"
 			>
 				<IconGear class="mr-0.5 text-xxs" />

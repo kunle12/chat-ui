@@ -246,7 +246,7 @@
 <nav class="mx-3 mt-3 flex h-12 items-center justify-between gap-1.5 md:hidden">
 	<button
 		type="button"
-		class="lcars-cap-r flex size-12 shrink-0 items-center justify-center bg-lcars-peach text-lg text-lcars-on-peach"
+		class="ui-cap-r flex size-12 shrink-0 items-center justify-center bg-lcars-peach text-lg text-lcars-on-peach"
 		onclick={() => (isOpen = true)}
 		aria-label="Open menu"
 		bind:this={openEl}><IconBurger /></button
@@ -254,7 +254,7 @@
 	<div class="flex h-full items-center justify-center overflow-hidden">
 		{#if page.params?.id}
 			<span
-				class="lcars-label max-w-full truncate px-2 text-lcars-muted first-letter:uppercase"
+				class="ui-label max-w-full truncate px-2 text-lcars-muted first-letter:uppercase"
 				data-testid="chat-title">{title}</span
 			>
 		{/if}
@@ -276,7 +276,7 @@
 		{/if}
 		<a
 			href="{base}/"
-			class="lcars-btn size-10 shrink-0 bg-lcars-amber px-0 text-lcars-on-amber"
+			class="ui-btn size-10 shrink-0 bg-lcars-amber px-0 text-lcars-on-amber"
 			onclick={(e) => {
 				if (requireAuthUser()) {
 					e.preventDefault();

@@ -320,41 +320,41 @@
 	<!-- The LCARS "screen": the page content sits on the rounded display panel,
 	     inset from the paper like the design mockups. -->
 	<div class="relative flex min-h-0 min-w-0 flex-col max-md:p-2 md:py-2 md:pr-2">
-		<div class="lcars-screen min-h-0 flex-1 overflow-hidden rounded-[18px] md:rounded-[22px]">
+		<div class="ui-screen min-h-0 flex-1 overflow-hidden rounded-[18px] md:rounded-[22px]">
 			{@render children?.()}
 		</div>
 		<!-- Bottom status strip. Real data, hidden below 860px like the mockups. -->
 		<div class="mt-2 hidden h-[38px] flex-none gap-2 min-[860px]:flex">
 			<div
-				class="lcars-cap-up flex flex-[2] items-center justify-center bg-lcars-lilac px-4 text-lcars-on-lilac"
+				class="ui-cap-up flex flex-[2] items-center justify-center bg-lcars-lilac px-4 text-lcars-on-lilac"
 				title={data.modelsReady
 					? "The model upstream is answering"
 					: "The model upstream has not answered yet"}
 			>
-				<span class="lcars-label font-bold">
+				<span class="ui-label font-bold">
 					{data.modelsReady ? "Hull integrity nominal" : "Awaiting model server"}
 				</span>
 			</div>
 			<div
-				class="lcars-cap-up flex flex-1 items-center justify-center bg-lcars-sky px-4 text-lcars-on-sky"
+				class="ui-cap-up flex flex-1 items-center justify-center bg-lcars-sky px-4 text-lcars-on-sky"
 			>
-				<span class="lcars-label font-bold">
+				<span class="ui-label font-bold">
 					{$loading ? "Warp 1 · streaming" : "Impulse · ready"}
 				</span>
 			</div>
 			<div
-				class="lcars-cap-up flex flex-[1.4] items-center justify-center bg-lcars-peach px-4 text-lcars-on-peach"
+				class="ui-cap-up flex flex-[1.4] items-center justify-center bg-lcars-peach px-4 text-lcars-on-peach"
 			>
-				<span class="lcars-label font-bold">
+				<span class="ui-label font-bold">
 					{data.models.filter((m) => !m.unlisted).length === 1
 						? "1 model online"
 						: `${data.models.filter((m) => !m.unlisted).length} models online`}
 				</span>
 			</div>
 			<div
-				class="lcars-cap-up flex flex-[0.55] items-center justify-center bg-lcars-amber px-3 text-lcars-on-amber"
+				class="ui-cap-up flex flex-[0.55] items-center justify-center bg-lcars-amber px-3 text-lcars-on-amber"
 			>
-				<span class="lcars-label font-bold">
+				<span class="ui-label font-bold">
 					{$enabledServersCount > 0 ? `${$enabledServersCount} mcp` : "mcp off"}
 				</span>
 			</div>

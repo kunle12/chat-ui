@@ -245,12 +245,17 @@ body {
 }
 
 /* ---------------------------------------------------------------------------
-   LCARS primitives. Media queries follow the design mockups: rails and the
-   bottom status strip disappear below 860px, the screen tightens to 18px
-   radius and 10px margins on phones.
+   UI primitives — the theme-neutral component API (THEMES.md §7). Themes
+   restyle these in `@layer components`; they may not target arbitrary
+   utilities. `.lcars-*` names are kept as deprecated aliases for one release
+   (grouped selectors below); remove them in the next minor.
+   Media queries follow the design mockups: rails and the bottom status strip
+   disappear below 860px, the screen tightens to 18px radius and 10px margins
+   on phones.
    --------------------------------------------------------------------------- */
 @layer components {
 	/* Mono instrument text: kickers, readouts, chip labels. */
+	.ui-label,
 	.lcars-label {
 		font-family: var(--font-mono);
 		font-size: 0.5625rem;
@@ -260,6 +265,7 @@ body {
 		text-transform: uppercase;
 	}
 
+	.ui-kicker,
 	.lcars-kicker {
 		font-family: var(--font-mono);
 		font-size: 0.59375rem;
@@ -269,6 +275,7 @@ body {
 	}
 
 	/* Display face for panel titles. */
+	.ui-display,
 	.lcars-display {
 		font-family: var(--font-display);
 		font-weight: 300;
@@ -277,6 +284,7 @@ body {
 	}
 
 	/* The main rounded "screen" panel from the mockups. */
+	.ui-screen,
 	.lcars-screen {
 		background: linear-gradient(
 			168deg,
@@ -288,25 +296,30 @@ body {
 		box-shadow: inset 0 2px 22px rgba(80, 95, 135, 0.1);
 	}
 
+	.dark .ui-screen,
 	.dark .lcars-screen {
 		box-shadow: inset 0 2px 22px rgba(0, 0, 0, 0.5);
 	}
 
 	/* Flat panel surface (sidebar, cards, composer). */
+	.ui-panel,
 	.lcars-panel {
 		background: var(--lcars-panel);
 		border: 1px solid var(--lcars-panel-edge);
 	}
 
 	/* The signature LCARS cut: a pill with one square side. */
+	.ui-cap-r,
 	.lcars-cap-r {
 		border-radius: 0 9999px 9999px 0;
 	}
+	.ui-cap-up,
 	.lcars-cap-up {
 		border-radius: 9999px 9999px 0 0;
 	}
 
 	/* Small mono status/attribute chip. */
+	.ui-chip,
 	.lcars-chip {
 		display: inline-flex;
 		align-items: center;
@@ -324,6 +337,7 @@ body {
 	}
 
 	/* Fade behind the composer overlay so messages scroll out under it. */
+	.ui-composer-fade,
 	.lcars-composer-fade {
 		background: linear-gradient(
 			to top,
@@ -334,6 +348,7 @@ body {
 	}
 
 	/* Status LED: green when ready, amber while waiting. */
+	.ui-led,
 	.lcars-led {
 		display: inline-block;
 		width: 7px;
@@ -343,6 +358,7 @@ body {
 		box-shadow: 0 0 0 3px color-mix(in srgb, var(--lcars-ready) 18%, transparent);
 	}
 
+	.ui-led.standby,
 	.lcars-led.standby {
 		background: var(--lcars-standby);
 		box-shadow: 0 0 0 3px color-mix(in srgb, var(--lcars-standby) 20%, transparent);
@@ -350,6 +366,7 @@ body {
 	}
 
 	/* The amber beacon orb (send button, standby state). */
+	.ui-beacon,
 	.lcars-beacon {
 		border-radius: 9999px;
 		background: radial-gradient(
@@ -366,6 +383,7 @@ body {
 	}
 
 	/* Capsule button, used for LCARS actions in chrome and settings. */
+	.ui-btn,
 	.lcars-btn {
 		display: inline-flex;
 		align-items: center;
@@ -382,6 +400,7 @@ body {
 			filter 150ms ease,
 			background-color 150ms ease;
 	}
+	.ui-btn:hover:not(:disabled),
 	.lcars-btn:hover:not(:disabled) {
 		filter: brightness(1.06);
 	}
@@ -397,6 +416,7 @@ body {
 	}
 
 	@media (prefers-reduced-motion: reduce) {
+		.ui-led.standby,
 		.lcars-led.standby {
 			animation: none;
 		}

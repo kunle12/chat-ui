@@ -162,7 +162,11 @@ Multi-theme support (user-selectable themes + portable theme plugins) is designe
 
 Implementation progress and per-phase checklists are tracked in
 [`THEMES_IMPLEMENTATION_LOG.md`](./THEMES_IMPLEMENTATION_LOG.md). Follow its agent protocol and
-update the log in the same commit as the work.
+update the log in the same commit as the work. If you are working on UI, **read that log
+first**: it says which phase is active, which hooks (`.ui-bubble`, `.ui-page`, `.ui-composer`,
+…) exist, and which verification (ratchet via `npm run check:theme-colors`, screenshot
+baselines in `tests/theme-baseline/`) your change must pass. Raw color utilities are
+ratcheted — new `bg-gray-*`/`text-blue-*`/`bg-[#…]` utilities fail CI; use semantic tokens.
 
 ## Code Conventions
 

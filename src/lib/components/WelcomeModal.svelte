@@ -14,14 +14,14 @@
 
 <Modal closeOnBackdrop={false} onclose={close} width="max-w-[420px]! m-4!">
 	<!-- LCARS access panel: peach title bar, display headline, amber action pill. -->
-	<div class="lcars-panel w-full overflow-hidden rounded-[22px]">
+	<div class="ui-panel w-full overflow-hidden rounded-[22px]">
 		<div class="flex items-center justify-between bg-lcars-peach px-5 py-3 text-lcars-on-peach">
-			<span class="lcars-label text-[0.625rem] font-bold">Access panel · 01</span>
+			<span class="ui-label text-[0.625rem] font-bold">Access panel · 01</span>
 			<span class="text-xs tracking-[0.3em] text-lcars-on-peach/60">●●●</span>
 		</div>
 		<div class="flex flex-col gap-4 px-6 pt-5 pb-6">
-			<span class="lcars-kicker text-lcars-dim">Identity verification · deck 01</span>
-			<h2 class="lcars-display -mt-1 text-[34px] leading-none text-lcars-ink">Welcome aboard</h2>
+			<span class="ui-kicker text-lcars-dim">Identity verification · deck 01</span>
+			<h2 class="ui-display -mt-1 text-[34px] leading-none text-lcars-ink">Welcome aboard</h2>
 			<p class="text-sm leading-relaxed text-lcars-muted">
 				Welcome to {publicConfig.PUBLIC_APP_NAME}, this is a private AI assistant for kunle12.org.
 			</p>
@@ -30,17 +30,17 @@
 					If your browser blocks embedded cookies, use the app in the new tab.
 				</p>{/if}
 			<button
-				class="lcars-btn mt-1 w-full bg-lcars-amber py-3 text-[0.6875rem] text-lcars-on-amber shadow-md"
+				class="ui-btn mt-1 w-full bg-lcars-amber py-3 text-[0.6875rem] text-lcars-on-amber shadow-md"
 				onclick={close}
 			>
 				Start chatting
 			</button>
 			<div class="flex overflow-hidden rounded-full">
 				<div class="flex-1 bg-lcars-lilac px-3 py-2 text-center text-lcars-on-lilac">
-					<span class="lcars-label font-bold">Registered crew only</span>
+					<span class="ui-label font-bold">Registered crew only</span>
 				</div>
 				<div class="flex-1 bg-lcars-sky px-3 py-2 text-center text-lcars-on-sky">
-					<span class="lcars-label font-bold">Secure</span>
+					<span class="ui-label font-bold">Secure</span>
 				</div>
 			</div>
 		</div>
