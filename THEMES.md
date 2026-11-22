@@ -19,21 +19,29 @@ first three themes:
 ## 1. TL;DR
 
 1. **Do not fork components per theme.** Introduce a **semantic token contract** (CSS custom
-   properties) plus a small set of **structural primitives** (`.ui-*` classes). Themes are
-   data: token values + optional scoped CSS.
+   properties) plus a set of **structural primitives** (`.ui-*` classes) with hooks for every
+   shape a theme must change. Themes are data — token values plus scoped CSS — and the three
+   **built-in** themes additionally ship small structural variants (welcome/intro/chrome) that
+   plugins cannot.
 2. **Exploit Tailwind v4's CSS variables.** Every theme also overrides the `--color-gray-*`
    ramp. Because `bg-gray-100`, `text-gray-500`, `border-gray-200`, … compile to
    `var(--color-gray-*)`, a short scoped block re-skins ~3,000 existing utility usages in
-   the codebase **without touching components**. This is the bridge that makes multi-theme
-   affordable now; semantic tokens are the long-term replacement.
+   the codebase **without touching components** (verified against Tailwind 4.3.3). This is
+   the bridge that makes multi-theme affordable now; semantic tokens are the long-term
+   replacement.
 3. **Themes scope to `data-theme="<id>"` on `<html>`** and combine orthogonally with the
    existing `.dark` mode class. `data-theme` picks the theme, `.dark` picks light/dark.
+   **Layering is normative:** token blocks are unlayered, structural overrides live in
+   `@layer components`, utilities keep winning (§5.1).
 4. **Built-ins are bundled** (`src/lib/themes/<id>/`), **external themes are portable plugins**
-   (`THEMES_DIR` on the server, discovered via an API, validated, lazily loaded).
-5. **User selection** is persisted in user settings (synced across devices) and mirrored to
-   a cookie + `localStorage` so the correct theme is applied **before first paint**.
-6. Target effort: **~6–9 engineering days** for the three themes + plugin loader + tests,
-   most of it in the one-time tokenization of surfaces the neutral ramp can't reach.
+   (`THEMES_DIR` on the server, discovered via an API, validated with a real CSS parser,
+   SSR-linked so they never flash).
+5. **The theme is part of SSR data**: `+layout.ts` returns it so the first HTML has the right
+   chrome; a cookie + `localStorage` mirror sets `<html data-theme class="dark">` before
+   first paint.
+6. Target effort: **~10–13 engineering days** for the three themes + plugin loader + tests.
+   The structural variants (`classic`, `office`) and the non-neutral color sweep dominate;
+   the neutral ramp is the cheap part.
 
 ---
 
@@ -64,14 +72,14 @@ first three themes:
 
 ## 3. Current state (baseline `d845a237`)
 
-| Layer                    | Where                                                                                                         | Notes                                                                                                                      |
-| ------------------------ | ------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------- |
-| Tailwind config / tokens | `src/styles/main.css`                                                                                         | `@theme` LCARS accents, `@theme inline` semantic colors, warm `gray-*` remap, `.lcars-*` primitives in `@layer components` |
-| Mode                     | `.dark` class; `src/app.html` bootstrap; `src/lib/switchTheme.ts`                                             | dark is the default; preference in `localStorage.theme` (`light`/`dark`/`system`)                                          |
-| Fonts                    | `src/styles/fonts/*.woff2` + `@font-face`                                                                     | bundled by Vite                                                                                                            |
-| Chrome                   | `+layout.svelte` screen panel + status strip; `ChatWindow` panel header; `NavMenu`; `MobileNav`               | LCARS structure is baked into markup                                                                                       |
-| Hard-coded colors        | 111 `.svelte` files, **2,996** neutral utilities, **484** non-neutral utilities, **203** arbitrary hex colors | the migration surface                                                                                                      |
-| Settings                 | `src/lib/types/Settings.ts`, `settingsValidation.ts`, `/api/v2/user/settings`, `stores/settings.ts`           | established pattern to add a synced field                                                                                  |
+| Layer                    | Where                                                                                                                                                                 | Notes                                                                                                                      |
+| ------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------- |
+| Tailwind config / tokens | `src/styles/main.css`                                                                                                                                                 | `@theme` LCARS accents, `@theme inline` semantic colors, warm `gray-*` remap, `.lcars-*` primitives in `@layer components` |
+| Mode                     | `.dark` class; `src/app.html` bootstrap; `src/lib/switchTheme.ts`                                                                                                     | dark is the default; preference in `localStorage.theme` (`light`/`dark`/`system`)                                          |
+| Fonts                    | `src/styles/fonts/*.woff2` + `@font-face`                                                                                                                             | bundled by Vite                                                                                                            |
+| Chrome                   | `+layout.svelte` screen panel + status strip; `ChatWindow` panel header; `NavMenu`; `MobileNav`                                                                       | LCARS structure is baked into markup                                                                                       |
+| Hard-coded colors        | 111 `.svelte` files, **~3,100** neutral utilities, **~491** non-neutral utilities, **~212** arbitrary hex colors; 14 files use `lcars-*` tokens (147 color utilities) | the migration surface                                                                                                      |
+| Settings                 | `src/lib/types/Settings.ts`, `settingsValidation.ts`, `/api/v2/user/settings`, `stores/settings.ts`                                                                   | established pattern to add a synced field                                                                                  |
 
 Pain points:
 
@@ -111,9 +119,9 @@ CSS surface second.
                 │ CSS variables + primitive rules
 ┌───────────────┴──────────────────────────────────────────────────────┐
 │  Theme layer (scoped)                                                │
-│  [data-theme="classic"] { --ui-…; --color-gray-…; }                  │
-│  [data-theme="classic"].dark { --ui-… }                              │
-│  [data-theme="classic"] .ui-panel { border-radius: 12px; … }         │
+│  [data-theme="classic"] { --ui-…; --color-gray-…; }      (unlayered)   │
+│  [data-theme="classic"].dark { --ui-… }                  (unlayered)   │
+│  @layer components { [data-theme] .ui-panel { … } }                    │
 └───────────────▲──────────────────────────────────────────────────────┘
                 │ theme.json + theme.css (built-in bundle or external)
 ┌───────────────┴──────────────────────────────────────────────────────┐
@@ -123,13 +131,46 @@ CSS surface second.
 └──────────────────────────────────────────────────────────────────────┘
 ```
 
-Resolution order for a given property:
+### 5.1 CSS layering contract (normative)
 
-1. Base primitives (`@layer components`, token-driven defaults).
-2. Theme token block (`[data-theme]`, unlayered, later in the cascade).
-3. Theme structural overrides (`[data-theme] .ui-*`, unlayered).
-4. Component utilities still win (Tailwind's utilities layer comes after components).
-5. Mode-specific token values via `[data-theme].dark`.
+Unlayered declarations beat **every** `@layer`. Tailwind v4 emits `theme`, `base`,
+`components` and `utilities` layers, so theme CSS is split into two kinds:
+
+| Kind                                          | Where                                                                                 | Why                                                                                                                           |
+| --------------------------------------------- | ------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------- |
+| **Token values** (`--ui-*`, `--color-gray-*`) | **unlayered**, scoped to `:root[data-theme="<id>"]` / `:root[data-theme="<id>"].dark` | No utility declares these custom properties, so unlayered is safe and guarantees the override beats `@layer theme`'s `:root`. |
+| **Structural overrides** (`.ui-panel { … }`)  | **`@layer components`**, scoped                                                       | Component utilities (`rounded-*`, `bg-*`, `border-*`) must keep winning, as they do today.                                    |
+
+Consequences (these are requirements, not advice):
+
+- A theme must **never** set, unlayered, a property that components also set with a
+  utility. Doing so silently kills hover/dark/opacity variants: an unlayered
+  `.ui-panel { border: 0 }` would override the composer's `border-lcars-marigold!`, and
+  unlayered `.ui-msg-card` colors would fight `bg-lcars-panel/40` on the assistant card.
+  Utilities such as `bg-lcars-panel/95` on the conversation dropdown are _not_ on a
+  primitive at all, so a theme cannot target them without a hook.
+- Any shape a target theme must change but that is currently an **arbitrary utility**
+  (`rounded-[22px_22px_6px_22px]`, `rounded-[18px]`, `md:rounded-[22px]`, the composer
+  overlay, the inner message column) needs a **primitive hook** (`.ui-bubble`,
+  `.ui-page`, `.ui-composer`, `.ui-header`, `.ui-strip`) added in Phase 0. CSS alone
+  cannot restyle utilities that are not primitives.
+- `!important` utilities beat all normal declarations, layered or not. Remove them from
+  themeable surfaces; the theme validator rejects `!important` because it cannot help a
+  theme that respects the layering contract.
+- `.prose` rules in `main.css` are intentionally unlayered to beat the typography plugin.
+  Theme prose overrides must therefore also be unlayered and re-state `prose-invert`
+  (see §8.2).
+- A custom property declared on an element shadows the `:root` token for that subtree.
+  Theme tokens must therefore be declared on `:root[data-theme]`, never on a component
+  root, or they will silently override the theme for part of the tree.
+
+Resolution order, corrected:
+
+1. `@layer theme` defaults (`:root` LCARS tokens, neutral ramp).
+2. **Unlayered** scoped token blocks (`:root[data-theme]`, `:root[data-theme].dark`).
+3. `@layer components`: base primitives, then theme structural overrides.
+4. `@layer utilities`: component utilities (and `!important` utilities last) — they win
+   over primitives by design.
 
 ---
 
@@ -142,42 +183,68 @@ values, so a theme that omits a token inherits the default. The validator still 
 
 ### 6.1 Required tokens
 
-| Group   | Token                                                        | Purpose                                                                |
-| ------- | ------------------------------------------------------------ | ---------------------------------------------------------------------- |
-| Surface | `--ui-bg`                                                    | app backdrop (behind panels)                                           |
-|         | `--ui-surface`                                               | panels, sidebar, cards                                                 |
-|         | `--ui-surface-raised`                                        | menus, popovers, modals                                                |
-|         | `--ui-surface-sunken`                                        | inputs, composer, code blocks                                          |
-|         | `--ui-screen`                                                | chat/document canvas                                                   |
-|         | `--ui-screen-image`                                          | optional gradient/pattern for the canvas (`none` default)              |
-|         | `--ui-border` / `--ui-border-strong`                         | dividers, focus-adjacent edges                                         |
-|         | `--ui-overlay`                                               | modal scrim                                                            |
-| Text    | `--ui-text` / `--ui-text-muted` / `--ui-text-faint`          | three-level hierarchy                                                  |
-|         | `--ui-text-inverse`                                          | text on accent fills                                                   |
-|         | `--ui-link`                                                  | links and citations                                                    |
-| Actions | `--ui-accent` / `--ui-accent-hover` / `--ui-accent-text`     | primary action                                                         |
-|         | `--ui-danger` / `--ui-danger-text`                           | destructive                                                            |
-|         | `--ui-warning` / `--ui-warning-text`                         | waiting/standby                                                        |
-|         | `--ui-success` / `--ui-success-text`                         | ready                                                                  |
-|         | `--ui-info` / `--ui-info-text`                               | neutral notices                                                        |
-| Chat    | `--ui-bubble-user-bg` / `--ui-bubble-user-text`              | user message                                                           |
-|         | `--ui-bubble-assistant-bg` / `--ui-bubble-assistant-text`    | assistant message                                                      |
-|         | `--ui-code-bg` / `--ui-code-text`                            | inline code / code blocks                                              |
-| Type    | `--ui-font-sans` / `--ui-font-display` / `--ui-font-mono`    | type stacks                                                            |
-|         | `--ui-font-size-base`                                        | 14px–16px per theme                                                    |
-|         | `--ui-label-tracking` / `--ui-label-transform`               | metadata labels (`0.2em`/`uppercase` for LCARS, `0`/`none` for Office) |
-| Shape   | `--ui-radius-sm` / `-md` / `-lg` / `-xl` / `-pill`           | 2px (Office) … 9999px (LCARS)                                          |
-|         | `--ui-border-width`                                          | 1px–2px                                                                |
-| Depth   | `--ui-shadow-sm` / `-md` / `-lg`                             | elevation                                                              |
-|         | `--ui-focus-ring` / `--ui-focus-ring-offset`                 | focus treatment                                                        |
-| Motion  | `--ui-motion-fast` / `--ui-motion-base` / `--ui-motion-ease` | transitions                                                            |
-| Density | `--ui-control-height` / `--ui-gutter`                        | 28px (Office) … 40px (LCARS)                                           |
+| Group   | Token                                                                    | Purpose                                                                |
+| ------- | ------------------------------------------------------------------------ | ---------------------------------------------------------------------- |
+| Surface | `--ui-bg`                                                                | app backdrop (behind panels)                                           |
+|         | `--ui-surface`                                                           | panels, sidebar, cards                                                 |
+|         | `--ui-surface-raised`                                                    | menus, popovers, modals                                                |
+|         | `--ui-surface-sunken`                                                    | inputs, composer, code blocks                                          |
+|         | `--ui-screen`                                                            | chat/document canvas                                                   |
+|         | `--ui-screen-image`                                                      | optional gradient/pattern for the canvas (`none` default)              |
+|         | `--ui-border` / `--ui-border-strong`                                     | dividers, focus-adjacent edges                                         |
+|         | `--ui-overlay`                                                           | modal scrim                                                            |
+| Text    | `--ui-text` / `--ui-text-muted` / `--ui-text-faint`                      | three-level hierarchy                                                  |
+|         | `--ui-text-inverse`                                                      | text on accent fills                                                   |
+|         | `--ui-link`                                                              | links and citations                                                    |
+| Actions | `--ui-accent` / `--ui-accent-hover` / `--ui-accent-text`                 | primary action                                                         |
+|         | `--ui-danger` / `--ui-danger-text`                                       | destructive                                                            |
+|         | `--ui-warning` / `--ui-warning-text`                                     | waiting/standby                                                        |
+|         | `--ui-success` / `--ui-success-text`                                     | ready                                                                  |
+|         | `--ui-info` / `--ui-info-text`                                           | neutral notices                                                        |
+| Chat    | `--ui-bubble-user-bg` / `--ui-bubble-user-text`                          | user message                                                           |
+|         | `--ui-bubble-assistant-bg` / `--ui-bubble-assistant-text`                | assistant message                                                      |
+|         | `--ui-code-bg` / `--ui-code-text`                                        | inline code / code blocks                                              |
+| States  | `--ui-selection-bg`                                                      | `::selection` (today a hardcoded LCARS amber)                          |
+|         | `--ui-scrollbar-thumb`                                                   | `scrollbar-custom` (today literal rgba)                                |
+|         | `--ui-prose-body` / `-heading` / `-link` / `-code` / `-quote` / `-rule`  | markdown/prose surfaces (maps to `--tw-prose-*`)                       |
+|         | `--ui-syntax-comment` / `-string` / `-keyword` / `-number` / `-function` | `highlight.js` tokens                                                  |
+|         | `--ui-theme-color`                                                       | `<meta name="theme-color">` + manifests                                |
+| Type    | `--ui-font-sans` / `--ui-font-display` / `--ui-font-mono`                | type stacks                                                            |
+|         | `--ui-font-size-base`                                                    | 14px–16px per theme (primitives only until utilities are migrated)     |
+|         | `--ui-label-tracking` / `--ui-label-transform`                           | metadata labels (`0.2em`/`uppercase` for LCARS, `0`/`none` for Office) |
+| Shape   | `--ui-radius-sm` / `-md` / `-lg` / `-xl` / `-pill`                       | 2px (Office) … 9999px (LCARS)                                          |
+|         | `--ui-border-width`                                                      | 1px–2px                                                                |
+| Depth   | `--ui-shadow-sm` / `-md` / `-lg`                                         | elevation                                                              |
+|         | `--ui-focus-ring-color` / `-width` / `-offset`                           | focus treatment (split so `outline-color` can consume it)              |
+| Motion  | `--ui-motion-fast` / `--ui-motion-base` / `--ui-motion-ease`             | transitions                                                            |
+| Density | `--ui-control-height` / `--ui-gutter`                                    | primitives only — raw `h-8`/`text-[13px]` utilities are unaffected     |
 
 ### 6.2 Optional tokens
 
 `--ui-topbar-bg`, `--ui-statusbar-bg`, `--ui-statusbar-text`, `--ui-sidebar-bg`,
-`--ui-scrollbar-thumb`, `--ui-logo-filter` (e.g. `invert(1)` for dark-on-dark logos),
-`--ui-beacon-bg`, `--ui-screen-border`.
+`--ui-scanline`, `--ui-logo-filter` (e.g. `invert(1)` for dark-on-dark logos),
+`--ui-beacon-bg`, `--ui-screen-border`, `--ui-cite-bg` / `--ui-cite-text`,
+`--ui-highlight-bg`, `--ui-shimmer-from` / `--ui-shimmer-to`.
+
+### 6.2.1 Token value typing (not free-form strings)
+
+Token-only themes are validated per token, not as `string → string`, because several tokens
+accept syntax that can make network requests or override global at-rules:
+
+| Token kind             | Grammar                                                                                                                                                             |
+| ---------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Colors                 | hex / `rgb()` / `hsl()` / `oklch()` / `color-mix(…)` / `var(--ui-…)` only — **no `url()`**                                                                          |
+| Lengths / radii        | `px` / `rem` / `em` / `%` / `calc(…)`                                                                                                                               |
+| Shadows                | comma-separated list of lengths + colors; **no `url()`**                                                                                                            |
+| Focus ring             | split into `--ui-focus-ring-color` (color), `--ui-focus-ring-width` (length), `--ui-focus-ring-offset` (length) — a shorthand cannot be consumed by `outline-color` |
+| Fonts                  | a fixed allowlist of stacks (`system`, `serif`, `sans`, `mono`, `theme`), never a raw family list in user themes                                                    |
+| Screen image           | `none` or `linear-gradient(…)` only                                                                                                                                 |
+| Motion                 | duration (`ms`/`s`) and a named easing allowlist                                                                                                                    |
+| Border width / density | unitless number or length; never `none` for required borders                                                                                                        |
+
+`--ui-overlay`, `--ui-scrollbar-thumb`, `--ui-prose-*`, `--ui-code-*` and
+`--ui-syntax-*` are wired in Phase 2 (§11.1); declaring them without wiring is detected by
+the "every required token is used" test (§15).
 
 ### 6.3 Modes
 
@@ -192,7 +259,9 @@ values, so a theme that omits a token inherits the default. The validator still 
 
 Tailwind v4 utilities reference theme variables (`bg-gray-100` → `var(--color-gray-100)`),
 and `@theme` declares them in a layer. Therefore an **unlayered, scoped** override re-themes
-every existing utility without component changes:
+every existing static utility without component changes. Verified against the installed
+Tailwind 4.3.3: `.bg-gray-100 { background-color: var(--color-gray-100) }` and
+`.border-gray-200 { border-color: var(--color-gray-200) }`.
 
 ```css
 /* themes/classic.css — unlayered so it beats @layer theme regardless of specificity */
@@ -212,18 +281,41 @@ every existing utility without component changes:
 ```
 
 One ramp serves both modes, exactly like stock Tailwind: components choose `gray-50/100`
-in light mode and `gray-800/900` in dark mode, so a single mapping is correct.
+in light mode and `gray-800/900` in dark mode, so a single mapping is correct. (Spot-checked
+against real pairings; no un-paired violation found.)
 
-> Verification task P0.1: assert in a unit test that a built stylesheet contains
-> `background-color:var(--color-gray-100)` (guards against a future Tailwind inlining
-> change). If Tailwind ever inlines values, the fallback is the semantic migration in §12.
+**Opacity modifier caveat.** `/opacity` utilities compile to a build-time fallback plus a
+`@supports` branch:
+
+```css
+.bg-gray-500\/10 {
+	background-color: color-mix(in srgb, #737373 10%, transparent); /* build-time hex */
+	@supports (color: color-mix(in lab, red, red)) {
+		background-color: color-mix(in oklab, var(--color-gray-500) 10%, transparent);
+	}
+}
+```
+
+On engines without `color-mix`, the fallback keeps the LCARS hex, so `/opacity` surfaces do
+not re-theme. This affects a small number of usages today; migrate themeable translucent
+surfaces to semantic alpha tokens in Phase 2 rather than relying on the modifier.
+
+> Verification task P0.1 must assert the `@supports` branch
+> (`color-mix(in oklab, var(--color-gray-100)`), not just the plain var rule. If Tailwind
+> ever stops emitting variables, the fallback is the semantic migration in §12.
+
+**`@theme inline` note.** `@theme inline` utilities compile to the raw variable
+(`.bg-lcars-panel { background: var(--lcars-panel) }`), so overriding `--lcars-panel` works
+but overriding `--color-lcars-panel` does not. Phase 2 removes the `lcars`/`ui` split
+entirely (§11.1).
 
 ---
 
 ## 7. Structural primitives (the plugin API)
 
 Rename the current `.lcars-*` component classes to a theme-neutral `.ui-*` API (mechanical
-`sed`, ~60 usages). Keep `.lcars-*` as deprecated aliases for one release; Tailwind classes
+`sed`, 208 occurrences across 14 files, 147 of them color utilities). Keep `.lcars-*` as
+deprecated aliases for one release; Tailwind classes
 were authored here, so churn is low.
 
 | Primitive                         | LCARS default                            | Office override (example)                                            |
@@ -241,7 +333,31 @@ were authored here, so churn is low.
 | `.ui-strip` / `.ui-strip-segment` | capsule status bar                       | Word status bar (`--ui-statusbar-bg`)                                |
 | `.ui-composer-fade`               | canvas gradient fade                     | canvas flat fade                                                     |
 
-**Chrome features** are configuration, not CSS, because they decide _whether markup renders_:
+**New hooks required in Phase 0** (today these shapes are arbitrary utilities, which theme
+CSS in `@layer components` cannot override):
+
+| Hook           | Wraps today's markup                                                                                                      | Needed by                                         |
+| -------------- | ------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------- |
+| `.ui-bubble`   | user message shape + colors (`ChatMessage` user `<p>`, `rounded-[22px_22px_6px_22px] bg-lcars-user-bubble`)               | `classic` (plain text), `office` (comment block)  |
+| `.ui-msg-card` | assistant message card (`ChatMessage` assistant container, `rounded-[18px] border-lcars-panel-edge/60 bg-lcars-panel/40`) | all three                                         |
+| `.ui-page`     | the inner message column (`ChatWindow` `@container mx-auto … max-w-3xl xl:max-w-4xl`)                                     | `office` document page                            |
+| `.ui-composer` | the composer form (`ChatWindow` `lcars-panel … max-w-4xl`)                                                                | all three                                         |
+| `.ui-header`   | the chat panel header (`ChatWindow` header row)                                                                           | `classic` (hidden), `office` (title bar)          |
+| `.ui-screen`   | already exists, but must move to the wrapper that owns the canvas background                                              | `office`                                          |
+| `.ui-scroll`   | the messages scroll container (`scrollbar-custom … overflow-y-auto`)                                                      | scrollbar/selection wiring, `office` page margins |
+
+**Coverage reality.** Only 14 of ~150 `.svelte` files reference any `lcars-*` token today
+(147 of the 208 occurrences are _color_ utilities; the rest are the primitives). The token
+contract therefore governs the primitive API and the semantic utilities we add; it does
+**not** retroactively control raw `h-8`, `text-[13px]`, `rounded-lg` utilities. Claims like
+"Office sets `--ui-control-height: 28px`" only come true for elements using `.ui-btn` /
+`.ui-chip` / the new hooks, unless those utilities are migrated (§12). The design must not
+pretend density/type tokens change raw utilities.
+
+**Chrome features** are configuration, not CSS, because they decide _whether markup renders_.
+They are resolved during SSR: built-in theme metadata is isomorphic (`+layout.ts`), external
+manifests are read by the new `+layout.server.ts`, so the first HTML already contains the
+right chrome — not client-only:
 
 ```jsonc
 "chrome": {
@@ -262,7 +378,9 @@ were authored here, so churn is low.
 
 `structure` is only honored for built-ins (they ship component variants, see §11). External
 plugins use the generic structure and can only restyle it. `labels` are plain strings only
-(no HTML/Markdown), rendered through the existing components with safe defaults.
+(no HTML/Markdown). They replace the currently hardcoded strip copy
+(`+layout.svelte`, "Hull integrity nominal" / "Warp 1 · streaming"), so non-LCARS themes get
+neutral wording without editing markup.
 
 ---
 
@@ -274,6 +392,7 @@ themes/<id>/
 ├── theme.css           # scoped variables + primitive overrides (optional for token-only themes)
 ├── preview-light.webp  # optional 1200×750 picker preview
 ├── preview-dark.webp
+├── LICENSE.txt / OFL.txt   # required when fonts are bundled
 └── fonts/              # optional self-hosted woff2 (same-origin only)
 ```
 
@@ -314,24 +433,37 @@ Both paths produce the same effective rules. `apiVersion` gates breaking changes
 
 ### 8.2 CSS rules for theme authors
 
-- Every rule must be scoped under `:root[data-theme="<id>"]` or
-  `:root[data-theme="<id>"].dark` (validator enforces this for external themes).
-- No `@import`, no `url()` except `./fonts/*.woff2` and `./preview-*.webp`.
-- No `position: fixed` on app-level elements, no `html`/`body` selectors, no `display: none`
-  on core content (hide _chrome_ through `chrome` flags instead).
-- Prefer tokens over literals; literals are allowed, `!important` is rejected by the
-  validator (the escape hatch is the unlayered cascade, which is already stronger than
-  utilities-by-layer for token blocks).
-- Must define every required token for every declared mode (validator warns/fails).
+- **Token blocks** (`--ui-*`, `--color-*`) must be unlayered and scoped under
+  `:root[data-theme="<id>"]` / `:root[data-theme="<id>"].dark` (validator enforces the
+  selector prefix for external themes).
+- **Structural overrides** must be inside `@layer components`, scoped to the same prefix.
+  Unlayered structural rules would beat component utilities and are rejected by the
+  validator. Only primitives may be restyled; arbitrary utilities cannot be targeted.
+- `.prose` overrides are the one exception: `.prose` in `main.css` is unlayered, so theme
+  prose rules must also be unlayered and must re-state `prose-invert` values for dark mode.
+- No `@import`, `@property`, `@font-face`, `@keyframes` (global at-rules leak into every
+  theme and are rejected), and no `url()` except the theme's own `./fonts/*.woff2`.
+  Reject `!important` entirely.
+- No `html`/`body` selectors, no `display: none` on core content, and no layout-changing
+  positioning (`position: fixed/sticky` on app-level elements) — hide _chrome_ through the
+  `chrome` flags instead. Note the validator can only _warn_ about positioning; it cannot
+  prove layout safety. Operator-installed CSS is trusted at the same level as app code.
+- Prefer tokens over literals. Must define every required token for every declared mode
+  (validator fails).
 
 ### 8.3 Fonts and licensing
 
 - Bundled fonts (Saira, IBM Plex Mono) stay with the `lcars` theme assets.
 - `classic` uses the system stack (no fonts to bundle).
-- `office` should use **Selawik** (MIT, metric-compatible with Segoe UI) and **Carlito**
-  (OFL, metric-compatible with Calibri) as redistributable fallbacks, with `"Segoe UI"`
-  and `"Calibri"` listed first so Windows users get the genuine faces. Do not redistribute
-  Microsoft fonts.
+- `office` should use **Selawik** and **Carlito** as redistributable fallbacks, with
+  `"Segoe UI"` and `"Calibri"` listed first so Windows users get the genuine faces. Do not
+  redistribute Microsoft fonts.
+  - Selawik is licensed under the **SIL Open Font License 1.1** (verified against
+    `microsoft/Selawik` — not MIT), reserved font name "Selawik".
+  - Carlito is OFL 1.1.
+- Any theme that bundles fonts must ship the corresponding `LICENSE`/`OFL.txt` file in its
+  package; `scripts/validate-themes.ts` fails if fonts are present without a license file,
+  and the picker links to it. The manifest's `license` field is descriptive only, not proof.
 
 ---
 
@@ -350,44 +482,73 @@ Both paths produce the same effective rules. `apiVersion` gates breaking changes
 
 ### 9.2 First paint (no flash)
 
-Three sources, resolved in this order:
+### 9.2 Theme in SSR, and first paint
 
-1. **Server, from a cookie** (preferred). `hooks.server.ts` already uses
-   `transformPageChunk` for `%gaId%`; add a `%themeAttrs%` placeholder in `app.html` and
-   replace it with `data-theme="…" class="dark"` derived from the `ui-theme` / `ui-mode`
-   cookies, falling back to `PUBLIC_DEFAULT_THEME` + dark.
-2. **Inline script in `app.html`** (covers cached/absent cookies and anonymous users) reading
-   `localStorage.ui-theme` / `ui-mode`, applying attributes before `%sveltekit.head%`.
-3. **Account settings** after hydration: if `settings.uiTheme` differs, apply it, rewrite the
-   cookie/localStorage, and (in dev) log a one-line reconciliation note.
+Two different problems, two different mechanisms:
+
+**(a) Markup/chrome must be server-correct.** The theme id and mode are part of the route
+data. Built-in manifests are isomorphic and resolve in `+layout.ts`; external manifests are
+read server-side by a new `+layout.server.ts`, which returns `uiTheme`, `uiThemeMode` and the
+resolved `chrome`/`labels` metadata (and writes the theme cookie). `+layout.svelte` therefore
+renders the right chrome during SSR — a returning `classic`/external-theme user gets HTML
+without the LCARS header/strip on the first response, with no post-hydration layout shift or
+hydration mismatch.
+
+**(b) The `<html>` attributes must be right before first paint.** Three sources:
+
+1. **Cookie, server-side** (preferred). `src/lib/server/hooks/handle.ts` owns the single
+   `transformPageChunk` (the `%gaId%` replacement lives there, _not_ in `hooks.server.ts`).
+   Add `%themeAttrs%` (and `%themeAssets%` for external CSS, see §9.4) to `app.html` and
+   replace both in the same guarded replacer. Validate the cookie value against the theme
+   registry before interpolation — never trust it (attribute injection).
+2. **Inline script** in `app.html`, before `%sveltekit.head%`, for anonymous users and
+   cookie-less first visits: reads `localStorage.ui-theme` / `ui-mode`, **migrating the
+   legacy `localStorage.theme` key** (light/dark/system) so an existing light-mode user does
+   not flip to dark on upgrade.
+3. **Settings reconciliation** after hydration: if the account theme differs (new device),
+   apply it, write the cookie/localStorage and log once. This is the only case with a visible
+   one-frame correction; write the cookie during a server-side layout load (new
+   `+layout.server.ts` reading the same settings) so every subsequent request is correct.
+
+Cookie writing is centralized: the theme picker, `GET/POST /settings` (which already run
+server-side), and the login callback all set `ui-theme`/`ui-mode` (`SameSite=Lax; Path=/;
+Max-Age=1y`).
 
 ```html
 <!-- app.html -->
-<html lang="en" %themeAttrs%></html>
+<html lang="en" %themeAttrs%>
+	<!-- %themeAssets%: SSR <link rel="stylesheet"> for an external active theme -->
+</html>
 ```
 
 ```ts
-// hooks.server.ts
-transformPageChunk: ({ html }) =>
-  html
-    .replace("%gaId%", "")
-    .replace("%themeAttrs%", themeAttrsFromCookies(event.cookies)),
+// src/lib/server/hooks/handle.ts (single replacer, beside %gaId%)
+const attrs = themeAttrsFromCookie(event.cookies); // sanitizeThemeId + registry membership
+const assets = externalThemeLink(attrs.id); // <link rel=preload + stylesheet> or ""
+html.replace("%themeAttrs%", attrs.markup).replace("%themeAssets%", assets);
 ```
 
-Svelte components read the active theme from a store seeded by the same attributes, so no
-markup throws on an unknown theme.
+Static builds (`npm run build:static`) must replace both placeholders in the `building`
+branch of `hooks.server.ts` too (default theme, no assets), and a build-time assertion must
+fail if any `%…%` placeholder survives in the output.
 
 ### 9.3 Selection and persistence
 
 - `Settings.uiTheme: string` (default `DEFAULT_SETTINGS.uiTheme ?? config.PUBLIC_DEFAULT_THEME ?? "lcars"`).
 - `Settings.uiThemeMode?: "light" | "dark" | "system"` (optional; keeps mode synced too).
 - Client `setTheme(id)`: apply attributes synchronously → `localStorage` + cookie → debounced
-  `POST /api/v2/user/settings` (merged `instantSet`, same as other preferences) → optimistic
-  UI update.
-- Validation: unknown ids fall back to the default; theme availability is checked against the
-  registry (built-ins ∪ discovered external themes).
+  POST to the **existing settings route, `${base}/settings`** (also implemented at
+  `/api/v2/user/settings`; both share `settingsValidation.ts`) → optimistic UI update.
+- Validation: the schema accepts any syntactically valid id, then **coerces unknown or
+  no-longer-installed ids to the default** on both read and write (log once). It must never
+  `error(400)` the whole payload because a theme was removed — that would block saving every
+  other setting.
 - Deep link `?theme=office` applies for the session and is stripped from the URL (same
   pattern as `?model=` in `+layout.svelte`).
+- The sidebar toggle changes **mode within the active theme**. Today `switchTheme()` only
+  cycles light↔dark; `system` is reachable only from settings. Decide explicitly whether the
+  toggle should cycle `light → dark → system` (documented behavior change) or stay a two-way
+  toggle.
 
 ### 9.4 External theme API
 
@@ -401,26 +562,47 @@ GET /api/v2/themes/:id/preview-:mode.webp  → image/webp
 
 - Directory from `THEMES_DIR` (unset → built-ins only; the route answers 404).
 - Path traversal protection: strict id regex + `fs.realpath` prefix check.
-- The loader links the stylesheet once, waits for `load`, then sets `data-theme`; a failed
-  load keeps the previous theme and surfaces a toast.
+- **No flash for external themes:** when the cookie/settings name an external theme, the SSR
+  response must emit `<link rel="preload" as="style">` + `<link rel="stylesheet">` in the
+  head in the same `transformPageChunk` pass. Otherwise the first paint would show LCARS
+  tokens under a foreign `data-theme` and repaint when the lazy link arrives. The
+  "link → wait for `load` → apply" sequence is only for _picking_ a theme mid-session; it
+  must revert on failure and toast.
 - Cache-Control: `public, max-age=3600, stale-while-revalidate=86400`; ETag from file mtime.
-- CSP: same-origin `<link>` works with `style-src 'self'`; if inline token `<style>` is used
-  for user themes, it needs a nonce or the `'unsafe-inline'` exception the app already has
-  for component styles.
+- CSP: the app currently configures only `frame-ancestors`, so there is no `style-src` /
+  `script-src` restriction today. The design must not rely on that: use same-origin
+  `<link>` for external CSS, and `%sveltekit.nonce%` for any inline token `<style>` /
+  bootstrap script so tightening CSP later does not break themes.
 
 ---
 
 ## 10. Security model
 
-| Source                            | Trust            | Rules                                                                                                                                                               |
-| --------------------------------- | ---------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Built-in (`src/lib/themes`)       | app code         | full CSS + component variants                                                                                                                                       |
-| Operator-installed (`THEMES_DIR`) | same as app code | full scoped CSS, validated; documented that CSS runs in the app origin                                                                                              |
-| User-uploaded (future, opt-in)    | untrusted        | **token-only JSON** validated by zod (colors, fonts from a fixed list, radii, shadows, motion), no CSS, no URLs; rendered as a scoped `<style>` with escaped values |
+| Source                            | Trust            | Rules                                                                                                                                                                                                          |
+| --------------------------------- | ---------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Built-in (`src/lib/themes`)       | app code         | full CSS + component variants                                                                                                                                                                                  |
+| Operator-installed (`THEMES_DIR`) | same as app code | scoped CSS validated for structure; **documented as trusted** — it can restyle anything in the app's DOM (including layout), though not execute script or make cross-origin requests beyond the font allowlist |
+| User-uploaded (future, opt-in)    | untrusted        | **token-only JSON** with a per-token value grammar (§6.2.1): no CSS, no `url()`, no fonts, no at-rules; rendered as a nonce'd scoped `<style>` with escaped values                                             |
 
-Because CSS can exfiltrate data (`url()` requests) and overlay UI, user-authored CSS is
-**not** enabled by default. Token-only themes cannot read data or inject layout, so they are
-safe to allow behind a future flag (`ENABLE_USER_THEMES=false` today).
+Honest guarantees:
+
+- **No theme executes JavaScript.** CSS cannot run script; the loader never evaluates theme
+  content.
+- **External CSS cannot reach other origins** if `url()` is restricted to the theme's own
+  `fonts/*.woff2` (validated by a real CSS parser, not regex). A `url()` in a token value is
+  the classic exfiltration vector and is rejected by the token grammar.
+- **Global at-rules are rejected** (`@property`, `@font-face`, `@keyframes`, `@import`):
+  they are not scoped by selectors and would leak into every theme / redefine animations.
+- **Selector scoping is enforced** for structural rules (`:root[data-theme="<id>"]` prefix,
+  `@layer components`), but it cannot prove layout safety: a scoped rule can still set
+  `position: fixed`. Treat operator CSS as trusted code, and keep user themes token-only.
+- Validation must use a real parser. `css-tree` (or `postcss`) is currently only a
+  _transitive_ dependency of Vite/Tailwind — promote it to an explicit devDependency so a
+  Vite upgrade cannot silently remove the validator. `scripts/validate-themes.ts` runs it at
+  install/CI time; the runtime loader re-validates cached manifests.
+- Token-only themes cannot read data or inject layout, so they are safe to allow behind a
+  future flag (`ENABLE_USER_THEMES=false` today). Their values are still length-limited and
+  parsed by the per-token grammar.
 
 ---
 
@@ -429,13 +611,23 @@ safe to allow behind a future flag (`ENABLE_USER_THEMES=false` today).
 ### 11.1 `lcars` — current UI (default)
 
 - **Tokens:** the values shipping today in `src/styles/main.css` (`--lcars-*` become
-  `--ui-*`; keep aliases), warm neutral ramp.
+  `--ui-*`), warm neutral ramp.
 - **Type:** Saira / Saira Extra Condensed / IBM Plex Mono; labels uppercase with `0.2em`
   tracking; display uppercase.
 - **Shape:** pill caps, 22px screen, 18px bubbles, beacon orb.
 - **Chrome:** full status strip, chat header readout, access-panel welcome, LCARS intro.
-- **Work:** rename primitives to `.ui-*`, move tokens under `:root[data-theme="lcars"]`,
-  replace hard-coded palette literals with tokens where they still exist, keep visual parity.
+- **Work:**
+  - Rename primitives to `.ui-*` and move tokens under `:root[data-theme="lcars"]`.
+  - **Remove the `.dark { --lcars-* }` block** and make `--lcars-*` a single alias of
+    `--ui-*`; otherwise the dark-mode literals shadow the aliases and `office` dark keeps
+    LCARS colors.
+  - **Rename the 147 `*-lcars-*` color utilities to `*-ui-*`** across 14 files (mechanical
+    `sed`). Without this, `classic`/`office` still paint LCARS amber/peach chrome, because
+    the ramp only covers `gray-*`, not `lcars-*`.
+  - Wire the new tokens: `::selection`, `:focus-visible` (split ring tokens),
+    `scrollbar-custom`, `.prose`/`prose-invert`, `highlight-js.css`, `::highlight`,
+    router shimmer and paper citations. Remove the raw `rgba()`/hex literals in those rules.
+  - Keep visual parity via the screenshot matrix.
 
 ### 11.2 `classic` — the original look
 
@@ -444,14 +636,19 @@ safe to allow behind a future flag (`ENABLE_USER_THEMES=false` today).
 - **Type:** system stack (no bundled fonts). No mono metadata, no uppercase labels.
 - **Shape:** `rounded-xl`/`2xl` as in the original (`--ui-radius-md: 0.75rem`), solid borders,
   original send button (black circle in light, white/60 in dark).
-- **Messages:** restore the original treatment — assistant card with `from-gray-50` gradient
-  and `border-gray-100`; user message as plain text (no bubble) — via primitive overrides and
+- **Messages:** assistant card with `from-gray-50` gradient and `border-gray-100`; user
+  message as plain text (no bubble) — via the `.ui-msg-card` / `.ui-bubble` hooks and
   `structure: "classic"` built-in variants.
 - **Chrome:** status strip hidden, chat header hidden (title lives in the page), sidebar
   `bg-linear-to-l from-gray-50` + rounded-right panel, welcome modal and intro from the
   pre-LCARS markup (built-in variant).
-- **Work:** smallest theme — ramp + primitive overrides + a few component variants that are
-  already in git history (`git show 9f6b0d7b:<file>`).
+- **Work:** ramp + primitive overrides + **structural variants in ~8 components**. The LCARS
+  redesign (`d845a237`) rewrote 32 files; restoring the original look in one tree means
+  `structure === "classic"` branches (or extracted variant wrappers) in:
+  `+layout.svelte`, `ChatWindow.svelte`, `ChatMessage.svelte`, `NavMenu.svelte`,
+  `MobileNav.svelte`, `WelcomeModal.svelte`, `ChatIntroduction.svelte`,
+  `ModelsUnavailable.svelte`, plus `settings/(nav)/+layout.svelte`. Source is in git
+  (`git show 9f6b0d7b:<file>`). **Estimate: 2–3 days**, not 0.5–1.
 
 ### 11.3 `office` — Word-like
 
@@ -464,10 +661,11 @@ safe to allow behind a future flag (`ENABLE_USER_THEMES=false` today).
 - **Type:** `"Segoe UI", Selawik, system-ui, sans-serif`; 13–14px base; **sentence case**,
   no letter-spacing (`--ui-label-transform: none`, `--ui-label-tracking: 0`).
 - **Shape:** 2px radii (`--ui-radius-*: 2px`, `--ui-pill: 2px`), 1px borders, dense controls
-  (`--ui-control-height: 28px`), square focus outline (`--ui-focus-ring: 2px solid #2b579a`).
+  (`--ui-control-height: 28px` — applies to `.ui-btn`/`.ui-chip` and the new hooks only),
+  split focus tokens (`--ui-focus-ring-color: #2b579a`, width `2px`).
 - **Layout language:**
-  - Top area reads like the title bar + ribbon: brand capsule becomes a flat band; primary
-    actions are ribbon-style flat buttons with a 1px bottom accent when active.
+  - Top area reads like the title bar + ribbon: the brand capsule becomes a flat band;
+    primary actions are ribbon-style flat buttons with a 1px bottom accent when active.
   - Sidebar reads like Word's navigation pane: 13px rows, selected row `#deecf9` with a 3px
     `#2b579a` left bar, subtle `#edebe9` hover, no pills.
   - Chat canvas becomes a **document page**: white rectangle (max ~820px) with
@@ -481,19 +679,46 @@ safe to allow behind a future flag (`ENABLE_USER_THEMES=false` today).
 "full"` reused, no new component.
   - Settings page becomes an Options-dialog layout: left rail list, grouped rows with
     checkbox-style toggles, blue primary buttons, `#f3f2f1` section headers.
-- **Work:** mostly tokens + primitive overrides; `structure: "office"` adds the document-page
-  wrapper class (`ui-screen--document`) and the Office welcome variant. Selawik/Carlito
-  fonts (MIT/OFL) bundled under the theme.
+- **Structural work (not just tokens):** the document page requires markup hooks that do not
+  exist today. `ChatWindow`'s messages column is `@container mx-auto … max-w-3xl` with **no
+  class hook**, and the composer is a sibling absolute overlay. Phase 0 adds
+  `.ui-page`/`.ui-scroll`/`.ui-composer`; Phase 4 wraps the message column in `.ui-page`
+  (or accepts a floating comment-box composer) and adds the Office welcome variant.
+  **Estimate: 1.5–2 days.**
+- **Iframe panes:** `WorkflowPane`/`TrackioPane` currently pass only `__theme=dark|light` to
+  embedded content. Either pass the resolved theme as well or accept that Space/Trackio
+  panes keep their own theme (document the limitation).
+- **Fonts:** Selawik + Carlito (both OFL 1.1), with their license files bundled.
 
----
+### 11.4 Non-neutral colors are part of this release (or explicitly out of scope)
+
+The ramp covers neutrals only. There are **~491 non-neutral** and **~212 arbitrary-hex**
+utility usages (purple tool chips, `text-red-600`, `bg-green-500`, `bg-black/80` scrims, ML
+Intern/review UI). If they are deferred, `office`/`classic` will be visibly hybrid (purple
+tool chips in a blue-and-gray Word look), and Phase 4's "side-by-side review against Word"
+cannot be accepted. Choose one:
+
+- **In scope:** migrate the highest-traffic ~30 files (shell, chat, composer, tool chips,
+  modal scrim, status colors, review panes) to `--ui-success/warning/danger/info/tool` in
+  Phases 2–4.
+- **Out of scope:** soften acceptance to "tokens + primitives + chrome only"; the hybrids are
+  documented as known gaps.
+
+The plan below assumes **in scope**, with the ratchet tracking the rest.
 
 ## 12. Component migration plan
 
-### 12.1 Inventory
+### 12.1 Inventory (verified)
 
-- 111 `.svelte` files contain neutral color utilities (2,996 occurrences).
-- 484 non-neutral color utilities (blue/purple/green/red/amber…).
-- 203 arbitrary hex color utilities (`bg-[#…]`), concentrated in ML Intern/review UI.
+- **111** `.svelte` files contain neutral color utilities; **~3,100** occurrences including
+  opacity modifiers (a plain-neutral regex counts 2,996).
+- **~491** non-neutral color utilities (blue/purple/green/red/amber…).
+- **~212** arbitrary hex color utilities (`bg-[#…]`), concentrated in ML Intern/review UI.
+- **14** files use `lcars-*` tokens: 147 color utilities + 61 primitive usages.
+- Reproduce with:
+  `grep -rcoE "(bg|text|border|from|via|to|ring)-(white|black|gray-[0-9]+)(/[0-9]+)?" src --include=*.svelte`
+  (and the analogous non-neutral/hex regexes); the ratchet script should commit the exact
+  command so the baseline is reproducible.
 
 ### 12.2 Strategy
 
@@ -537,14 +762,14 @@ src/lib/themes/
 ├── types.ts                # manifest + token types, zod schemas
 ├── registry.ts             # built-ins + external discovery, availability
 ├── themes.svelte.ts        # runtime store: active theme, mode, apply(), setTheme()
-├── builtin/
-│   ├── lcars/{theme.json,theme.css,fonts/,preview-*.webp}
-│   ├── classic/{theme.json,theme.css,preview-*.webp}
-│   └── office/{theme.json,theme.css,fonts/,preview-*.webp}
+├── lcars/{theme.json,theme.css,fonts/,preview-*.webp}
+├── classic/{theme.json,theme.css,preview-*.webp}
+├── office/{theme.json,theme.css,fonts/,preview-*.webp}
 └── __tests__/themes.spec.ts
 src/styles/
-├── main.css                # contract defaults (LCARS), primitives (ui-*), neutral baseline
-└── themes.css              # imports built-in theme CSS in a fixed order (after main.css)
+├── main.css                # contract defaults (LCARS tokens), primitives (ui-*), neutral baseline
+└── themes.css              # @imports the built-in theme CSS in a fixed order; imported by
+                            # +layout.svelte right after main.css.
 src/routes/api/v2/themes/
 ├── +server.ts              # list (built-ins + external, metadata only)
 └── [id]/{+server.ts,theme.css/+server.ts,fonts/[file]/+server.ts,preview-[mode]/+server.ts}
@@ -558,74 +783,105 @@ scripts/
 
 ## 14. Implementation phases
 
-### Phase 0 — Contract & guardrails (0.5 day)
+### Phase 0 — Contract, layering & hooks (1–1.5 days)
 
-- Write `src/lib/themes/types.ts` (schemas above) and the required-token list as data.
-- Verify Tailwind emits `var(--color-gray-*)`; add the regression test.
-- Rename `.lcars-*` → `.ui-*` with aliases; sweep ~60 usages; `npm run check` + screenshots.
-- **Acceptance:** app visually identical; tests green; no `.lcars-*` usages outside aliases.
+- Write `src/lib/themes/types.ts`: manifest schema, **per-token value grammar** (§6.2.1),
+  required-token list, chrome/labels.
+- Verify Tailwind output (static var rule **and** the `/opacity` `@supports` branch) and add
+  both assertions.
+- Rename `.lcars-*` primitives → `.ui-*` with aliases and add the missing hooks
+  (`.ui-bubble`, `.ui-msg-card`, `.ui-page`, `.ui-composer`, `.ui-header`, `.ui-scroll`);
+  mechanical sweep across 14 files.
+- **Acceptance:** app visually identical; tests green; no theme CSS relies on unlayered
+  structural rules; hooks exist for every shape the specs need to change.
 
-### Phase 1 — Runtime, persistence, picker (1.5–2 days)
+### Phase 1 — Runtime, SSR, persistence, picker (2–2.5 days)
 
-- `themes.svelte.ts`: registry, apply, cookie/localStorage, SQL settings field, migration.
-- `app.html` `%themeAttrs%` + `hooks.server.ts` replacement + client bootstrap.
-- Settings → Appearance gallery (cards with previews, mode segmented control, "Default"
-  reset), instant apply, `instantSet` persistence, cross-device reconcile.
-- **Acceptance:** switching themes survives reload, sign-in on a second browser, and first
-  paint is correct (no flash) with cookies present or absent; unknown ids fall back safely.
+- `themes.svelte.ts`: registry (built-in manifests isomorphic), apply, cookie/localStorage
+  (with `localStorage.theme` migration), settings field + coercion.
+- `+layout.ts` returns `uiTheme`/`uiThemeMode`; `+layout.svelte` gates chrome/labels from
+  theme config **server-side**; `handle.ts` replaces `%themeAttrs%` + `%themeAssets%`
+  (validated against the registry); `hooks.server.ts` building branch replaces both too.
+- New `+layout.server.ts` writes the theme cookie so subsequent requests are correct;
+  document the one-frame correction on a brand-new device.
+- Settings → Appearance gallery (previews, mode control, reset), instant apply,
+  `${base}/settings` persistence.
+- **Acceptance:** SSR HTML already has the right chrome; first paint correct with cookies and
+  with `localStorage` only; external-theme SSR includes the stylesheet (no FOUC); unknown ids
+  coerce safely; legacy light-mode preference survives the upgrade.
 
-### Phase 2 — LCARS under the contract (1 day)
+### Phase 2 — LCARS under the contract (1.5 days)
 
-- Move LCARS values into `builtin/lcars/theme.css` scoped to `data-theme="lcars"`.
-- Map all `--lcars-*` to `--ui-*` (keep aliases); drive fonts/labels/radii from tokens.
-- **Acceptance:** pixel-comparable screenshots (dark/light, desktop/mobile); no hard-coded
-  palette in `main.css` beyond LCARS defaults.
+- Move LCARS values into `src/lib/themes/lcars/theme.css`, remove the `.dark { --lcars-* }` block,
+  make `--lcars-*` a single alias, then rename the 147 `*-lcars-*` color utilities to
+  `*-ui-*`.
+- Wire selection, focus ring, scrollbar, overlay, prose/prose-invert, syntax highlighting,
+  `::highlight`, shimmer, citations, and `meta theme-color`.
+- **Acceptance:** pixel-comparable screenshots; a "token wiring" test proves every required
+  token affects at least one rule; no palette literals outside LCARS defaults.
 
-### Phase 3 — Classic (0.5–1 day)
+### Phase 3 — Classic (2–3 days)
 
-- Ramp + primitive overrides + `structure: "classic"` variants for welcome/intro/messages.
-- **Acceptance:** matches pre-LCARS screenshots (`git show 9f6b0d7b`); works in light/dark.
+- Ramp + primitive overrides + `structure: "classic"` variants in the 8–9 components listed
+  in §11.2; strip labels from theme config instead of hardcoded copy.
+- **Acceptance:** matches pre-LCARS screenshots (`git show 9f6b0d7b`); light/dark; no LCARS
+  chrome or accent colors leak through.
 
-### Phase 4 — Office (1–1.5 days)
+### Phase 4 — Office (1.5–2 days)
 
-- Tokens (light/dark), Selawik/Carlito fonts, document-page canvas, navigation-pane sidebar,
-  status bar via the existing strip, Options-style settings.
-- **Acceptance:** side-by-side review against Word (Windows + web); light and dark.
+- Tokens (light/dark), Selawik/Carlito (OFL) with licenses, `.ui-page` document canvas,
+  navigation-pane sidebar, status bar via the existing strip, Options-style settings.
+- Includes the semantic sweep for the high-traffic non-neutral surfaces (§11.4) — or an
+  explicit acceptance change if deferred.
+- **Acceptance:** side-by-side review against Word (Windows + web), light/dark; no purple/raw
+  accent leakage on the migrated surfaces; iframe panes documented.
 
-### Phase 5 — External plugin loader (1–1.5 days)
+### Phase 5 — External plugin loader (1.5–2 days)
 
-- `THEMES_DIR`, list/manifest/css/fonts/preview routes, validation, caching, 404 behavior.
+- `THEMES_DIR`, list/manifest/css/fonts/preview routes, validation with an explicit CSS
+  parser devDependency, token grammar, caching, 404 behavior, SSR `<link>` emission.
 - Loader UX (loading state, failure toast, revert).
-- `scripts/validate-themes.ts` + docs for theme authors.
-- **Acceptance:** dropping a folder into `THEMES_DIR` and reloading makes it selectable; a
-  malformed/unscoped theme is rejected with a clear error; traversal attempts 404.
+- `scripts/validate-themes.ts` + theme-author docs.
+- **Acceptance:** dropping a folder into `THEMES_DIR` and reloading makes it selectable with
+  no flash; malformed/unscoped/global-at-rule themes are rejected with a clear error;
+  traversal attempts 404; user-theme uploads remain disabled.
 
 ### Phase 6 — Tests, docs, previews (1 day)
 
-- Theme matrix tests, contrast checks, preview generation, README/CLAUDE/THEMES updates.
-- **Acceptance:** CI runs theme unit tests + contrast; previews committed; docs linked.
+- Theme matrix tests, wiring/contrast checks, preview generation, README/CLAUDE/THEMES updates.
+- **Acceptance:** CI runs theme unit tests + contrast + wiring + no-flash; previews committed;
+  docs linked.
 
-**Total: 6–9 engineering days**, parallelizable (Classic and Office can start once Phase 0
-lands; Phase 5 is independent of the theme content).
+**Total: 10–13 engineering days**, parallelizable once Phase 0 lands (Classic/Office are
+content; Phase 5 is independent). The earlier 6–9 estimate under-counted the structural
+variants and the non-neutral surfaces.
 
 ---
 
 ## 15. Testing strategy
 
-1. **Unit (`themes.spec.ts`)**: manifest schema (valid/invalid), id/mode resolution, token
-   completeness per theme/mode, fallback behavior, label defaults.
-2. **Contrast**: for each theme × mode, compute WCAG ratios for text/surface, muted/surface,
-   accent-text/accent; require ≥ 4.5 (normal), ≥ 3 (large/UI). Fail CI on regressions.
-3. **Loader security**: path traversal, unscoped selector rejection, `!important`, `@import`,
-   remote `url()`; font extension allowlist.
-4. **Playwright matrix** (`scripts/theme-shots.ts`): routes `{home, conversation, settings}` ×
-   themes `{lcars, classic, office}` × modes `{light, dark}` × viewports `{1440×900, 390×844}`.
-   Assertions: no horizontal overflow, composer visible and clickable, status strip visibility
-   matches `chrome.statusStrip`, and a token probe element resolves each required token to a
-   non-empty computed value.
-5. **No-flash**: with JS enabled, assert `data-theme`/`dark` values before and after hydration
-   are identical; with JS disabled, assert the server attribute (cookie path) is correct.
-6. **Ratchet**: raw color utility count must not increase.
+1. **Unit (`themes.spec.ts`)**: manifest schema (valid/invalid), per-token value grammar,
+   id/mode resolution, token completeness per theme/mode, fallback/coercion behavior, label
+   defaults.
+2. **Wiring**: every required token must be read by at least one rule in the effective
+   stylesheet (a probe element per token), so a theme author's value is never silently dead.
+3. **Contrast**: for each theme × mode, compute WCAG ratios for text/surface, muted/surface,
+   accent-text/accent; require ≥ 4.5 (normal), ≥ 3 (large/UI). Fail CI on regressions. A
+   small local sRGB/OKLab helper is needed (`culori`/`colorjs` are not dependencies).
+4. **Loader security**: path traversal, unscoped structural selectors, `!important`,
+   `@import`, `@property`, `@font-face`, `@keyframes`, remote `url()` (including in token
+   values), font extension allowlist, license-file presence when fonts are bundled.
+5. **Playwright matrix** (`scripts/theme-previews.ts`): routes `{home, conversation, settings}`
+   × themes `{lcars, classic, office}` × modes `{light, dark}` × viewports `{1440×900,
+390×844}`. Assertions: no horizontal overflow, composer visible and clickable, chrome
+   visibility matches `chrome`, SSR markup and hydrated markup match, and the `/opacity`
+   `@supports` branch references the theme variable. Screenshots become the picker previews.
+6. **No-flash**: with JS enabled, assert `data-theme`/`dark` are unchanged across hydration;
+   with JS disabled, assert the server attributes from the cookie; for an external theme,
+   assert the stylesheet `<link>` is present in the SSR head.
+7. **Ratchet**: raw color utility counts (neutral, non-neutral, hex) must not increase;
+   commit the exact counting commands with the baseline.
+8. **Static build**: assert no `%…%` placeholder survives `build:static`.
 
 Memory note for this repo: run the matrix **per theme** with `--no-file-parallelism
 --maxWorkers=1`, never the full suite locally (see CLAUDE.md).
@@ -634,18 +890,23 @@ Memory note for this repo: run the matrix **per theme** with `--no-file-parallel
 
 ## 16. Risks and mitigations
 
-| Risk                                                               | Likelihood | Mitigation                                                                                                        |
-| ------------------------------------------------------------------ | ---------- | ----------------------------------------------------------------------------------------------------------------- |
-| Tailwind stops emitting theme vars in utilities                    | Low        | P0 regression test; fallback = semantic migration plan                                                            |
-| Specificity/order bugs between `data-theme`, `.dark` and utilities | Medium     | Token blocks unlayered + scoped (`:root[data-theme]`); theme CSS loaded after main.css; CI probes computed values |
-| Third-party CSS leaks or exfiltrates                               | Medium     | Operator-only CSS by default, scoping validator, no remote URLs; user themes token-only                           |
-| Font licensing (Segoe/Calibri)                                     | Medium     | Bundle Selawik (MIT) and Carlito (OFL); list genuine faces first for Windows                                      |
-| Visual regressions during primitive rename                         | Low        | `.lcars-*` aliases + screenshot parity in Phase 0                                                                 |
-| Theme × feature matrix grows maintenance                           | Medium     | Token contract versioning; previews regenerated by script; contrast + matrix tests                                |
-| Users on unknown/removed theme after upgrade                       | Low        | Fallback to default + one-time toast; settings validation on GET                                                  |
-| Extra CSS weight                                                   | Low        | ~8–15 KB gz per built-in, external lazy; brotli                                                                   |
-| Strict CSP blocks inline token styles                              | Low        | Prefer `<link>` for external themes; nonce for inline token styles                                                |
-| `system` mode on single-mode themes feels broken                   | Low        | Picker annotates supported modes; runtime coerces deterministically                                               |
+| Risk                                                         | Likelihood | Mitigation                                                                                                                                             |
+| ------------------------------------------------------------ | ---------- | ------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Tailwind stops emitting theme vars in utilities              | Low        | P0 asserts static **and** `/opacity` `@supports` output; fallback = semantic migration                                                                 |
+| Theme CSS masks component utilities or vice versa            | Medium     | Layering contract (§5.1): tokens unlayered, structure in `@layer components`; primitives for every shape themes must change; CI probes computed values |
+| SSR chrome and client theme disagree                         | Medium     | Theme id/mode in `+layout.ts` data (SSR-rendered chrome); cookie mirrored by layout server load; hydration parity test                                 |
+| External theme flashes on load                               | High       | SSR emits preload + stylesheet for a cookie-selected external theme; loader only applies after `load` when picked mid-session                          |
+| Third-party CSS leaks or exfiltrates                         | Medium     | Operator-only CSS (trusted) by default; real parser validation; global at-rules and `url()` rejected; user themes token-only with typed grammar        |
+| Font licensing (Segoe/Calibri)                               | Medium     | Bundle Selawik + Carlito (**both OFL 1.1**); ship their license files; list genuine faces first for Windows                                            |
+| Visual regressions during primitive/hook rename              | Medium     | `.lcars-*` aliases + screenshot parity in Phase 0                                                                                                      |
+| Theme × feature matrix grows maintenance                     | Medium     | Contract versioning; previews regenerated by script; contrast + wiring + matrix tests                                                                  |
+| Users on unknown/removed theme after upgrade                 | Medium     | Coerce to default on read/write (never 400 the settings payload); one-time toast                                                                       |
+| Legacy light-mode preference lost in the `ui-mode` migration | Medium     | Migrate `localStorage.theme` in the bootstrap; explicit upgrade test                                                                                   |
+| `!important` utilities defeat theme structure                | Low        | Remove `!important` from themeable surfaces; validator rejects it in theme CSS                                                                         |
+| Extra CSS weight                                             | Low        | ~1–3 KB gz per built-in (token block + rules), external lazy; brotli                                                                                   |
+| Strict CSP blocks inline token styles                        | Low        | Prefer `<link>` for external themes; `%sveltekit.nonce%` for inline token styles/scripts                                                               |
+| `.prose`/highlight rules remain off-theme                    | Medium     | Wire prose/prose-invert, highlight-js, `::highlight`, shimmer and citations in Phase 2 (unlayered, with the documented invert trap)                    |
+| `system` mode on single-mode themes feels broken             | Low        | Picker annotates supported modes; runtime coerces deterministically                                                                                    |
 
 ---
 
@@ -667,7 +928,7 @@ Memory note for this repo: run the matrix **per theme** with `--no-file-parallel
 ## Appendix A — `classic` theme (excerpt)
 
 ```jsonc
-// src/lib/themes/builtin/classic/theme.json
+// src/lib/themes/classic/theme.json
 {
 	"apiVersion": 1,
 	"id": "classic",
@@ -685,7 +946,7 @@ Memory note for this repo: run the matrix **per theme** with `--no-file-parallel
 ```
 
 ```css
-/* src/lib/themes/builtin/classic/theme.css (unlayered) */
+/* src/lib/themes/classic/theme.css (tokens unlayered; structure in @layer components) */
 :root[data-theme="classic"] {
 	--color-gray-50: #fafafa; /* …through 950… */
 	--color-gray-950: #000000;
@@ -720,21 +981,40 @@ Memory note for this repo: run the matrix **per theme** with `--no-file-parallel
 	--ui-accent-text: #0a0a0a;
 }
 
-:root[data-theme="classic"] .ui-panel {
-	border-radius: 0.75rem;
-	background: transparent;
-	border: 0;
+:root[data-theme="classic"] {
+	/* `--lcars-*` are aliases of `--ui-*` after Phase 2, so LCARS-named utilities
+	   keep working here without leaking LCARS colors. */
+	--lcars-paper: var(--ui-bg);
+	--lcars-panel: var(--ui-surface);
+	--lcars-ink: var(--ui-text);
+	--lcars-muted: var(--ui-text-muted);
+	--lcars-user-bubble: #f3e8f6;
+	--lcars-user-ink: #3d2340;
 }
-:root[data-theme="classic"] .ui-btn {
-	border-radius: 0.5rem;
-	text-transform: none;
-	letter-spacing: 0;
-}
-:root[data-theme="classic"] .ui-screen {
-	background: transparent;
-	border: 0;
-	box-shadow: none;
-	border-radius: 0;
+
+@layer components {
+	:root[data-theme="classic"] .ui-panel {
+		border-radius: 0.75rem;
+		background: transparent;
+		border: 0;
+	}
+	:root[data-theme="classic"] .ui-btn {
+		border-radius: 0.5rem;
+		text-transform: none;
+		letter-spacing: 0;
+	}
+	:root[data-theme="classic"] .ui-screen {
+		background: transparent;
+		border: 0;
+		box-shadow: none;
+		border-radius: 0;
+	}
+	:root[data-theme="classic"] .ui-bubble {
+		background: transparent;
+		border: 0;
+		border-radius: 0;
+		padding: 0;
+	}
 }
 ```
 
@@ -775,38 +1055,48 @@ export async function setTheme(id: string, mode: ThemeMode) {
 	if (!theme) return fallbackToDefault();
 
 	if (theme.css && !isBuiltin(id)) {
+		// Mid-session switch: wait for the sheet so the new theme never paints unstyled.
 		await loadStylesheet(`/api/v2/themes/${id}/theme.css?${theme.version}`); // once, cached
 	}
 	applyAttributes(theme, mode); // html.dataset.theme, .dark
 	persist({ id, mode }); // cookie + localStorage (sync), DB (debounced)
 }
+// SSR path is different: handle.ts emits <link rel=preload> + <link rel=stylesheet>
+// when the cookie names an external theme, so the first paint is already styled.
 ```
 
 ## Appendix C — First-paint bootstrap
 
 ```html
 <!-- src/app.html -->
-<html lang="en" %themeAttrs%></html>
+<html lang="en" %themeAttrs%>
+	<!-- %themeAssets%: SSR preload + stylesheet for an external active theme -->
+</html>
 ```
 
 ```ts
-// src/hooks.server.ts
-const themeAttrs = ({ cookies }) => {
-	const theme = sanitizeThemeId(cookies.get("ui-theme")) ?? config.PUBLIC_DEFAULT_THEME ?? "lcars";
+// src/lib/server/hooks/handle.ts (single replacer beside %gaId%)
+const themeAttrs = (cookies: Cookies) => {
+	// Only ids that exist in the registry may reach the HTML attribute.
+	const requested = cookies.get("ui-theme");
+	const theme = sanitizeThemeId(requested); // /^[a-z0-9][a-z0-9-]{0,31}$/ + registry.has()
+	const id = theme ?? config.PUBLIC_DEFAULT_THEME ?? "lcars";
 	const mode = cookies.get("ui-mode"); // "light" | "dark" | "system" | undefined
-	// Best effort server-side: there is no media query here. "system" is rendered dark
-	// and the pre-paint inline script corrects it on a light OS before anything paints.
+	// Best effort server-side: no media query here. "system" renders dark and the
+	// pre-paint inline script corrects it on a light OS before anything paints.
 	const dark = mode !== "light";
-	return `data-theme="${theme}"${dark ? ' class="dark"' : ""}`;
+	return { markup: `data-theme="${id}"${dark ? ' class="dark"' : ""}`, id };
 };
 ```
 
 ```html
-<script>
+<script nonce="%sveltekit.nonce%">
 	// client fallback (runs before first paint)
 	try {
+		var legacy = localStorage.getItem("theme");
 		var t = localStorage.getItem("ui-theme") || "%defaultTheme%";
-		var m = localStorage.getItem("ui-mode");
+		var m = localStorage.getItem("ui-mode") || legacy || "dark";
+		if (!localStorage.getItem("ui-mode") && legacy) localStorage.setItem("ui-mode", legacy);
 		var prefersDark = window.matchMedia("(prefers-color-scheme: dark)").matches;
 		var dark = m === "dark" || (m === "system" ? prefersDark : m !== "light");
 		document.documentElement.dataset.theme = t;
@@ -815,6 +1105,10 @@ const themeAttrs = ({ cookies }) => {
 </script>
 ```
 
+The static-build branch of `hooks.server.ts` must replace `%themeAttrs%` and
+`%themeAssets%` too (default theme, empty assets); a build assertion fails on any surviving
+`%…%` placeholder.
+
 ## Appendix D — Settings changes
 
 ```ts
@@ -822,7 +1116,7 @@ const themeAttrs = ({ cookies }) => {
 export type UiThemeMode = "light" | "dark" | "system";
 export interface Settings {
 	// …
-	/** Selected UI theme id; falls back to the configured default. */
+	/** Selected UI theme id; unknown ids are coerced to the default on read/write. */
 	uiTheme?: string;
 	/** Light/dark/system preference, synced across devices. */
 	uiThemeMode?: UiThemeMode;
@@ -835,13 +1129,19 @@ export const DEFAULT_SETTINGS = {
 ```
 
 - `settingsValidation.ts`: `uiTheme: z.string().regex(/^[a-z0-9][a-z0-9-]{0,31}$/).optional()`,
-  `uiThemeMode: z.enum(["light", "dark", "system"]).optional()`.
-- `GET /api/v2/user/settings`: return both fields with defaults; validate against the theme
-  registry server-side (fallback to default if unknown).
+  `uiThemeMode: z.enum(["light", "dark", "system"]).optional()`. Unknown-but-well-formed ids
+  are accepted by the schema and **coerced to the default** by the resolver — never rejected
+  with a 400 (that would block saving every other setting).
+- Both settings endpoints share this schema: `GET/POST /api/v2/user/settings` and the
+  **`${base}/settings` route the client store actually posts to**
+  (`src/lib/stores/settings.ts`). Update both responses, `SettingsResponse` in
+  `src/routes/+layout.ts`, and `SettingsStore` in `src/lib/stores/settings.ts`.
 - `POST`: accept both (validated), persist.
 - `stores/settings.ts`: add to `SettingsStore`; the layout seeds it from SSR data.
-- Remove/replace `switchTheme()`: the sidebar toggle now cycles mode **within** the active
-  theme (`light → dark → system`), and the picker lives in Appearance.
+- Replace `switchTheme()`: the sidebar toggle changes mode **within** the active theme.
+  Decide whether it cycles `light ↔ dark` (today) or `light → dark → system`; `system` is
+  currently reachable only from settings, and any change to that is user-visible.
+- Migration: on first load, seed `ui-mode` from the legacy `localStorage.theme` value.
 
 ## Appendix E — Preview generation
 
@@ -851,7 +1151,7 @@ for (const theme of THEMES) {
 	for (const mode of theme.modes) {
 		for (const [name, viewport] of VIEWPORTS) {
 			await page.goto(`/settings/application?theme=${theme.id}&mode=${mode}`);
-			await page.screenshot({ path: `src/lib/themes/builtin/${theme.id}/preview-${mode}.webp` });
+			await page.screenshot({ path: `src/lib/themes/${theme.id}/preview-${mode}.webp` });
 		}
 	}
 }
@@ -862,11 +1162,37 @@ constraints.
 
 ---
 
+## Appendix F — Verified assumptions (as of writing)
+
+Reproduced against the installed Tailwind 4.3.3 and the repository at `11854a99`:
+
+- `.bg-gray-100 { background-color: var(--color-gray-100) }` — static theme utilities
+  reference CSS variables.
+- `/opacity` utilities emit a build-time hex fallback plus an `@supports` branch that uses
+  `var(--color-…)`; themes only reach the latter on capable engines.
+- `.bg-lcars-panel` (from `@theme inline`) compiles to `var(--lcars-panel)`.
+- `transformPageChunk` lives in `src/lib/server/hooks/handle.ts`; `hooks.server.ts` only
+  handles the `building` (static build) branch.
+- `src/lib/stores/settings.ts` posts to `${base}/settings`; both settings routes share
+  `src/lib/server/settingsValidation.ts`.
+- `svelte.config.js` sets only `frame-ancestors` (no `style-src`/`script-src` today).
+- Selawik is SIL OFL 1.1 (verified from `microsoft/Selawik/LICENSE.txt`); Carlito is OFL.
+- The pre-LCARS neutral ramp is byte-identical to `git show 9f6b0d7b:src/styles/main.css`.
+- Counts: 111 files with neutral utilities (~3,100 occurrences), ~491 non-neutral, ~212
+  arbitrary hex, 14 files with `lcars-*` tokens (147 color utilities + 61 primitives).
+
+---
+
 ## Definition of done
 
-- [ ] `data-theme` runtime, cookie/localStorage/DB persistence, no first-paint flash.
+- [ ] `data-theme` runtime, cookie/localStorage/DB persistence, no first-paint flash; SSR
+      chrome matches the account theme, external-theme SSR includes its stylesheet.
+- [ ] Layering contract enforced: tokens unlayered, structure in `@layer components`, hooks
+      for every shape the themes change; no `!important` on themeable surfaces.
 - [ ] `lcars`, `classic`, `office` selectable and visually reviewed in light + dark, desktop + mobile.
-- [ ] Theme picker in Settings → Appearance with previews; unknown ids fall back safely.
-- [ ] External themes load from `THEMES_DIR` with validation, caching and clear failures.
-- [ ] Required-token + contrast + matrix tests in CI; raw-color ratchet in place.
+- [ ] Theme picker in Settings → Appearance with previews; unknown ids coerce safely.
+- [ ] External themes load from `THEMES_DIR` with parser-based validation, caching and clear
+      failures; token-only user themes remain off.
+- [ ] Token wiring + contrast + matrix tests in CI; raw-color ratchet in place.
+- [ ] Legacy `localStorage.theme` preference migrated; static builds contain no placeholders.
 - [ ] README, CLAUDE.md, CODEBASE_SUMMARY.md and this document updated.
