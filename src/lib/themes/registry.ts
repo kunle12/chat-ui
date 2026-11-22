@@ -52,11 +52,26 @@ const lcarsManifest: ThemeManifest = themeManifestSchema.parse({
 	labels: {},
 });
 
+const classicManifest: ThemeManifest = themeManifestSchema.parse({
+	apiVersion: 1,
+	id: "classic",
+	name: "Classic",
+	version: "1.0.0",
+	description: "The original chat-ui look: stock neutrals, plain panels, no chrome.",
+	modes: ["light", "dark"],
+	chrome: {
+		statusStrip: "hidden",
+		chatHeader: "hidden",
+		sidebar: "plain",
+		structure: "classic",
+	},
+});
+
 /**
  * classic/office land here as their phases (P3-01/P4-01) create their
  * manifests; the registry code is written against the full set from the start.
  */
-export const BUILTIN_THEMES: readonly ThemeManifest[] = [lcarsManifest];
+export const BUILTIN_THEMES: readonly ThemeManifest[] = [lcarsManifest, classicManifest];
 
 const builtinById: ReadonlyMap<string, ThemeManifest> = new Map(
 	BUILTIN_THEMES.map((theme) => [theme.id, theme])

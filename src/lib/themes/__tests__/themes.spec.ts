@@ -32,10 +32,11 @@ describe("theme id sanitization + coercion", () => {
 
 	it("coerces unknown ids to the default (never an error)", () => {
 		expect(coerceThemeId("does-not-exist")).toBe("lcars");
-		// A configured fallback that is not installed degrades to the built-in
-		// default instead of throwing (operator misconfiguration must not 500
-		// page renders). `classic` registers in Phase 3, `office` in Phase 4.
-		expect(coerceThemeId("classic", [], "classic")).toBe("lcars");
+		// Registered ids pass through; a configured fallback that is not
+		// installed degrades to the built-in default instead of throwing
+		// (operator misconfiguration must not 500 page renders).
+		expect(coerceThemeId("classic")).toBe("classic");
+		expect(coerceThemeId("classic", [], "classic")).toBe("classic");
 	});
 
 	it("isKnownThemeId gates cookie values", () => {

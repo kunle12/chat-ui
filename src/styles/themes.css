@@ -5,3 +5,4 @@
  * structural overrides live in @layer components (§5.1).
  */
 @import "../lib/themes/lcars/theme.css";
+@import "../lib/themes/classic/theme.css";

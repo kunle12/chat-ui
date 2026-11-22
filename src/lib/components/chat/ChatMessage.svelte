@@ -719,7 +719,7 @@
 						}}
 					>
 						<textarea
-							class="ui-bubble w-full rounded-[22px] bg-ui-user-bubble px-5 py-3.5 wrap-break-word whitespace-break-spaces text-ui-user-ink *:h-max focus:outline-hidden"
+							class="ui-bubble w-full rounded-(--ui-radius-xl) bg-ui-user-bubble px-5 py-3.5 wrap-break-word whitespace-break-spaces text-ui-user-ink *:h-max focus:outline-hidden"
 							rows="5"
 							bind:this={editContentEl}
 							value={message.content.trim()}

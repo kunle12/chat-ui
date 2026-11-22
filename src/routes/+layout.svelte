@@ -182,13 +182,22 @@
 				reconcileFromServer(data.uiTheme, data.uiThemeMode);
 			}
 		} else {
+			// Anonymous: adopt the preference the pre-paint bootstrap resolved —
+			// same precedence (cookie → localStorage → legacy), so hydration
+			// never contradicts the first paint.
+			const cookieMode = document.cookie
+				.split("; ")
+				.find((c) => c.startsWith("ui-mode="))
+				?.slice("ui-mode=".length);
+			const valid = (v: string | undefined): ThemeModePreference | undefined =>
+				v === "light" || v === "dark" || v === "system" ? v : undefined;
 			const storedTheme = localStorage.getItem("ui-theme");
-			const storedMode = localStorage.getItem("ui-mode") ?? localStorage.getItem("theme");
-			if (storedTheme || storedMode) {
-				reconcileFromServer(
-					storedTheme ?? data.uiTheme,
-					(storedMode ?? undefined) as ThemeModePreference | undefined
-				);
+			const preference =
+				valid(cookieMode) ??
+				valid(localStorage.getItem("ui-mode") ?? undefined) ??
+				valid(localStorage.getItem("theme") ?? undefined);
+			if (storedTheme || preference) {
+				reconcileFromServer(storedTheme ?? data.uiTheme, preference);
 			}
 		}
 	}
@@ -387,11 +396,21 @@
 	<GenerationLiveWatcher />
 	<NotificationToasts />
 	<!-- The LCARS "screen": the page content sits on the rounded display panel,
-	     inset from the paper like the design mockups. -->
+	     inset from the paper like the design mockups. Themes with
+	     structure !== "lcars" render children directly on the page (classic
+	     looks like the pre-LCARS layout; office wraps its own document page). -->
 	<div class="relative flex min-h-0 min-w-0 flex-col max-md:p-2 md:py-2 md:pr-2">
-		<div class="ui-screen min-h-0 flex-1 overflow-hidden rounded-[18px] md:rounded-[22px]">
-			{@render children?.()}
-		</div>
+		{#if themeMeta.chrome.structure === "lcars"}
+			<div
+				class="ui-screen min-h-0 flex-1 overflow-hidden rounded-[18px] md:rounded-(--ui-radius-xl)"
+			>
+				{@render children?.()}
+			</div>
+		{:else}
+			<div class="ui-screen min-h-0 flex-1 overflow-hidden">
+				{@render children?.()}
+			</div>
+		{/if}
 		<!-- Bottom status strip. Real data, hidden below 860px like the mockups.
 		     Visibility and copy come from the active theme's chrome/labels
 		     (THEMES.md §7); LCARS keeps both at their original values. -->

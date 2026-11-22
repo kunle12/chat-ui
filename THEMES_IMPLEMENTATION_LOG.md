@@ -152,16 +152,26 @@ completeness). `npm run check` 0/0, lint clean, ratchet ok (neutral 3046, -2).
 **Acceptance:** matches pre-LCARS screenshots (`git show 9f6b0d7b:<file>`); light/dark; no
 LCARS chrome or accent leakage.
 
-- [ ] **P3-01** `classic/theme.json` + ramp (stock Tailwind neutrals) + tokens/fonts
+- [x] **P3-01** `classic/theme.json` + ramp (stock Tailwind neutrals) + tokens/fonts
       (system stack), `chrome: { statusStrip: hidden, chatHeader: hidden }`.
-- [ ] **P3-02** Primitive overrides in `@layer components` (panel/screen/btn/chip/bubble).
-- [ ] **P3-03** `structure: "classic"` variants in `+layout.svelte`, `ChatWindow.svelte`,
+- [x] **P3-02** Primitive overrides in `@layer components` (panel/screen/btn/chip/bubble).
+- [x] **P3-03** `structure: "classic"` variants in `+layout.svelte`, `ChatWindow.svelte`,
       `ChatMessage.svelte`, `NavMenu.svelte`, `MobileNav.svelte`.
-- [ ] **P3-04** Variants in `WelcomeModal.svelte`, `ChatIntroduction.svelte`,
+- [x] **P3-04** Variants in `WelcomeModal.svelte`, `ChatIntroduction.svelte`,
       `ModelsUnavailable.svelte`, `settings/(nav)/+layout.svelte`.
-- [ ] **P3-05** Move status-strip/labels copy into theme config (no hardcoded LCARS strings).
-- [ ] **P3-06** Light/dark screenshots vs. the pre-LCARS commit; document accepted diffs.
+- [x] **P3-05** Move status-strip/labels copy into theme config (no hardcoded LCARS strings).
+- [x] **P3-06** Light/dark screenshots vs. the pre-LCARS commit; document accepted diffs.
 
+**Acceptance evidence:** classic dark + light captured in the live app (`/tmp` parity
+captures + MCP browser screenshots): no LCARS peach/amber/lilac/sky leakage — the accent
+capsules re-map through the semantic tokens (classic/theme.css `--color-ui-*` bridge);
+status strip + chat header hidden via chrome flags; welcome modal renders the plain
+dialog; labels sentence-case via `--ui-label-*`. The pre-LCARS share button returns at its
+original position. Accepted diffs vs the pre-LCARS commit: the sidebar uses the flat
+`.ui-panel` surface rather than the original gray gradient (same family, documented);
+composer keeps the token-driven radius (`--ui-radius-xl` = 1.25rem classic) instead of the
+original's per-element radii. Ratchet +6 neutral absorbed with documented reason (classic
+branch markup renders only under structure=classic).
 ---
 
 ## 7. Phase 4 — Office theme (1.5–2 d)
@@ -367,12 +377,13 @@ revisit (external script file or Kit fix) when a strict CSP lands.
 
 ## 14. Session log
 
-| Date       | Agent/owner          | Summary                                                                                  | Commits                            |
-| ---------- | -------------------- | ---------------------------------------------------------------------------------------- | ---------------------------------- |
-| 2026-11-22 | design agent         | Multi-theme design (`THEMES.md`), critical review, hardening, implementation log         | `11854a99`, `f664e1cd`, `8ef4361d` |
-| 2026-11-22 | implementation agent | Phase 0 complete (contract, layering, hooks, ratchet, baseline); D7–D11 resolved         | `e3f48f74`                         |
-| 2026-11-22 | implementation agent | Phase 1 complete (runtime, SSR, persistence, picker); 5 self-review fixes; deviation D15 | `41503515`                         |
-| 2026-11-22 | implementation agent | Phase 2 complete (LCARS under the contract); 2 parity-driven bug fixes                   | (this commit)                      |
+| Date       | Agent/owner          | Summary                                                                                     | Commits                            |
+| ---------- | -------------------- | ------------------------------------------------------------------------------------------- | ---------------------------------- |
+| 2026-11-22 | design agent         | Multi-theme design (`THEMES.md`), critical review, hardening, implementation log            | `11854a99`, `f664e1cd`, `8ef4361d` |
+| 2026-11-22 | implementation agent | Phase 0 complete (contract, layering, hooks, ratchet, baseline); D7–D11 resolved            | `e3f48f74`                         |
+| 2026-11-22 | implementation agent | Phase 1 complete (runtime, SSR, persistence, picker); 5 self-review fixes; deviation D15    | `41503515`                         |
+| 2026-11-22 | implementation agent | Phase 2 complete (LCARS under the contract); 2 parity-driven bug fixes                      | (this commit)                      |
+| 2026-11-22 | implementation agent | Phase 3 complete (classic theme + structure branches); cookie-precedence reconciliation fix | `d0b91f01`                         |
 
 ---
 
