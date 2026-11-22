@@ -1,4 +1,4 @@
-import type { Handle, RequestEvent } from "@sveltejs/kit";
+import type { Cookies, Handle, RequestEvent } from "@sveltejs/kit";
 import { collections } from "$lib/server/database";
 import { base } from "$app/paths";
 import { dev } from "$app/environment";
@@ -18,7 +18,25 @@ import { config, ready } from "$lib/server/config";
 import { isSlackConversationMutation } from "$lib/server/slack/readOnly";
 import { BOOTSTRAP_SCRIPT } from "$lib/themes/bootstrap";
 import { cookieThemeAttrs } from "$lib/themes/server";
+import { isBuiltinThemeId, sanitizeThemeId } from "$lib/themes/registry";
+import { readExternalManifest } from "$lib/server/themes/loader";
 import { parseRequestOrigin } from "./origin";
+
+/**
+ * `<link rel=preload + stylesheet>` for a cookie-selected external theme
+ * (THEMES.md §9.4, log task P5-06). Returns "" for built-ins and unknown ids.
+ */
+function themeAssetsMarkup(cookies: Cookies, origin: string, basePath: string): string {
+	const id = sanitizeThemeId(cookies.get("ui-theme"));
+	if (!id || isBuiltinThemeId(id)) return "";
+	const manifest = readExternalManifest(id);
+	if (!manifest) return "";
+	const v = manifest.version;
+	return (
+		`<link rel="preload" href="${origin}${basePath}/api/v2/themes/${id}/theme.css" as="style">` +
+		`<link rel="stylesheet" href="${origin}${basePath}/api/v2/themes/${id}/theme.css?v=${v}">`
+	);
+}
 
 type HandleInput = Parameters<Handle>[0];
 
@@ -261,9 +279,14 @@ export async function handleRequest({ event, resolve }: HandleInput): Promise<Re
 						html = html.replace("%themeAttrs%", cookieThemeAttrs(event.cookies));
 					}
 
-					// External theme stylesheet (Phase 5); built-ins ship no assets.
+					// External theme stylesheet: when the cookie names a non-builtin
+					// theme, emit preload + stylesheet so the first paint is already
+					// themed (THEMES.md §9.4, log task P5-06).
 					if (html.includes("%themeAssets%")) {
-						html = html.replace("%themeAssets%", "");
+						html = html.replace(
+							"%themeAssets%",
+							themeAssetsMarkup(event.cookies, event.url.origin, base)
+						);
 					}
 
 					// Pre-paint bootstrap from a single tested source

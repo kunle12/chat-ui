@@ -1,5 +1,5 @@
 import { browser } from "$app/environment";
-import { DEFAULT_THEME_ID, resolveManifest, resolveMode } from "./registry";
+import { DEFAULT_THEME_ID, isBuiltinThemeId, resolveManifest, resolveMode } from "./registry";
 import type { ThemeManifest, ThemeMode, ThemeModePreference } from "./types";
 
 /**
@@ -123,19 +123,55 @@ export interface SetThemeOptions {
 	skipPersist?: boolean;
 }
 
+/** Load an external theme stylesheet and wait for it to apply (P5-06). */
+async function loadExternalStylesheet(id: string): Promise<boolean> {
+	try {
+		const res = await fetch(`${base}/api/v2/themes/${id}/theme.css`);
+		if (!res.ok) return false;
+		const existing = document.getElementById(`theme-css-${id}`);
+		if (existing) return true;
+		const link = document.createElement("link");
+		link.id = `theme-css-${id}`;
+		link.rel = "stylesheet";
+		link.href = `${base}/api/v2/themes/${id}/theme.css`;
+		document.head.appendChild(link);
+		await new Promise<boolean>((resolve) => {
+			link.onload = () => resolve(true);
+			link.onerror = () => resolve(false);
+		});
+		return true;
+	} catch {
+		return false;
+	}
+}
+
+import { base } from "$app/paths";
+
 /**
  * Switch the active theme and/or mode preference. Applies synchronously
  * (no flash), mirrors to localStorage + cookie, and — when a persist hook is
- * installed — schedules the account-settings save.
+ * installed — schedules the account-settings save. External themes await
+ * their stylesheet before applying (P5-06).
  */
-export function setTheme(
+export async function setTheme(
 	id: string,
 	preference: ThemeModePreference | undefined,
 	options: SetThemeOptions = {}
-): void {
+): Promise<void> {
 	const manifest = resolveManifest(id);
 	const prefersDark = browser ? window.matchMedia("(prefers-color-scheme: dark)").matches : true;
 	const { mode } = resolveMode(manifest, preference, prefersDark);
+
+	// External theme: load the stylesheet before applying, so the new theme
+	// never paints unstyled (THEMES.md §9.4, log task P5-06). Built-in token
+	// blocks are already in the bundle. On failure revert to the current theme.
+	if (browser && !isBuiltinThemeId(manifest.id) && !options.skipPersist) {
+		const loaded = await loadExternalStylesheet(manifest.id);
+		if (!loaded) {
+			console.error(`Theme "${manifest.id}" failed to load — keeping the current theme`);
+			return;
+		}
+	}
 
 	state.id = manifest.id;
 	state.preference = preference;

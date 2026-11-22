@@ -210,19 +210,26 @@ own theme, documented in THEMES.md §11.3.
 unscoped or global-at-rule themes are rejected with clear errors; traversal attempts 404;
 user-theme uploads remain disabled.
 
-- [ ] **P5-01** `THEMES_DIR` config + list/manifest routes (metadata only, 404 when unset).
-- [ ] **P5-02** `theme.css` + `fonts/:file` + `preview-:mode` routes; strict id regex +
+- [x] **P5-01** `THEMES_DIR` config + list/manifest routes (metadata only, 404 when unset).
+- [x] **P5-02** `theme.css` + `fonts/:file` + `preview-:mode` routes; strict id regex +
       `fs.realpath` prefix check; caching/ETag.
-- [ ] **P5-03** Promote a CSS parser (`css-tree`/`postcss`) to an explicit devDependency.
-- [ ] **P5-04** Structural validation: scoped selectors, `@layer components` for structure,
+- [x] **P5-03** Promote a CSS parser (`css-tree`/`postcss`) to an explicit devDependency.
+- [x] **P5-04** Structural validation: scoped selectors, `@layer components` for structure,
       reject `@import`/`@property`/`@font-face`/`@keyframes`/`!important`/remote `url()`.
-- [ ] **P5-05** Token grammar validation for token-only themes (per-token types, no `url()`).
-- [ ] **P5-06** SSR `<link rel=preload as=style>` + stylesheet emission for a cookie-selected
+- [x] **P5-05** Token grammar validation for token-only themes (per-token types, no `url()`).
+- [x] **P5-06** SSR `<link rel=preload as=style>` + stylesheet emission for a cookie-selected
       external theme; loader waits for `load` only on mid-session selection; failure/revert
       toast.
-- [ ] **P5-07** `scripts/validate-themes.ts` (license-file presence when fonts bundled) + CI.
-- [ ] **P5-08** Theme-author docs (package layout, allowed CSS, token grammar, licensing).
+- [x] **P5-07** `scripts/validate-themes.ts` (license-file presence when fonts bundled) + CI.
+- [x] **P5-08** Theme-author docs (package layout, allowed CSS, token grammar, licensing).
 
+**Acceptance evidence:** loader module + API routes + offline validator implemented;
+css-tree promoted to explicit devDependency with type shim; structural validation rejects
+unscoped selectors, global at-rules, !important, url(), html/body, display:none, and
+unlayered structural declarations. Token grammar gates theme.json values. %themeAssets%
+emits preload+stylesheet for a cookie-selected external theme; setTheme awaits the
+stylesheet for non-builtins and reverts on failure. Traversal attempts 404 via realpath
+prefix check. User-theme uploads remain disabled (flag off).
 ---
 
 ## 9. Phase 6 — Tests, previews, docs (1 d)
@@ -395,6 +402,7 @@ revisit (external script file or Kit fix) when a strict CSP lands.
 | 2026-11-22 | implementation agent | Phase 2 complete (LCARS under the contract); 2 parity-driven bug fixes                      | (this commit)                      |
 | 2026-11-22 | implementation agent | Phase 3 complete (classic theme + structure branches); cookie-precedence reconciliation fix | `d0b91f01`                         |
 | 2026-11-22 | implementation agent | Phase 4 complete (office theme: fonts, document canvas, status bar, minimal header)         | (this commit)                      |
+| 2026-11-23 | implementation agent | Phase 5 complete (external plugin loader + css-tree validation)                             | (this commit)                      |
 
 ---
 
