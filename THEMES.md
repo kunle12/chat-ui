@@ -1,6 +1,6 @@
 # Multi-theme architecture — design & implementation plan
 
-Status: **proposal** · Author: engineering · Target release: next minor
+Status: **implemented (Phases 0–5; P6 previews pending)** · Author: engineering · Target release: next minor
 
 > Execution tracking (phase checklists, decisions, verification):
 > [`THEMES_IMPLEMENTATION_LOG.md`](./THEMES_IMPLEMENTATION_LOG.md). Update the log in the same
