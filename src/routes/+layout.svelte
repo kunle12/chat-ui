@@ -27,6 +27,7 @@
 	import { isAborted } from "$lib/stores/isAborted";
 	import { isPro } from "$lib/stores/isPro";
 	import { requireAuthUser } from "$lib/utils/auth";
+	import { startGuardLogoutListener } from "$lib/utils/guardLogout";
 	import { createConversationsStore } from "$lib/stores/conversations.svelte";
 	import {
 		initThemeRuntime,
@@ -34,7 +35,7 @@
 		setTheme,
 		getActiveTheme,
 	} from "$lib/themes/themes.svelte";
-	import { resolveManifest, resolveChrome, resolveLabel } from "$lib/themes/registry";
+	import { resolveManifest, resolveChrome } from "$lib/themes/registry";
 	import type { ThemeModePreference } from "$lib/themes/types";
 	import { createActiveGenerationsStore } from "$lib/stores/activeGenerations.svelte";
 	import { createNotificationsStore } from "$lib/stores/notifications.svelte";
@@ -241,6 +242,11 @@
 	$effect(() => {
 		setHapticsEnabled($settings.hapticsEnabled);
 	});
+
+	// Guard cross-tab logout: when another tab signs out, this tab navigates to
+	// the guard login instead of staying usable on a dead session. The guard
+	// still gates the next request, but a redirect also ends open SSE streams.
+	onMount(() => startGuardLogoutListener());
 
 	onMount(async () => {
 		// Seed the MCP store from the SSR payload before anything else runs.
