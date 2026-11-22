@@ -31,7 +31,10 @@
 			{publicConfig.PUBLIC_APP_NAME}
 		</div>
 		<div class="ui-kicker text-ui-dim">
-			{structure === "classic" ? "Ready when you are" : "All systems nominal · ready for input"}
+			{structure === "classic"
+				? "Ready when you are"
+				: (getActiveTheme().manifest.labels.introTagline ??
+					"All systems nominal · ready for input")}
 		</div>
 	</div>
 	{@render children?.()}

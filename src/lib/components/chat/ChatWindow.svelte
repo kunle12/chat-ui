@@ -1314,9 +1314,30 @@
 		{/if}
 		<!-- Panel header: conversation kicker, model capsule, stream readout.
 		     .ui-header: theme hook (THEMES.md §7). classic hides it entirely
-		     (chatHeader: "hidden" — the title lives on the page); the share
-		     button moves to its pre-LCARS absolute position. -->
-		{#if getActiveTheme().manifest.chrome.chatHeader !== "hidden"}
+		     (chatHeader: "hidden"); office renders a minimal title bar; the
+		     share button moves to its pre-LCARS absolute position. -->
+		{#if getActiveTheme().manifest.chrome.chatHeader === "minimal"}
+			<div
+				class="ui-header relative z-[2] flex flex-none items-center gap-3 border-b border-ui-panel-edge px-4 py-2"
+			>
+				<span class="min-w-0 truncate text-[0.8125rem] font-semibold text-ui-ink">
+					{currentModel.displayName}
+				</span>
+				{#if canShare}
+					<button
+						type="button"
+						class="hover:bg-ui-surface-sunken ml-auto flex size-7 flex-none items-center justify-center rounded-sm text-ui-muted hover:text-ui-ink {loading
+							? 'cursor-not-allowed opacity-40'
+							: ''}"
+						onclick={() => shareModal.open()}
+						aria-label="Share conversation"
+						disabled={loading}
+					>
+						<IconShare />
+					</button>
+				{/if}
+			</div>
+		{:else if getActiveTheme().manifest.chrome.chatHeader !== "hidden"}
 			<div
 				class="ui-header relative z-[2] flex flex-none items-center gap-2.5 px-4 pt-3 pb-2.5 sm:px-5"
 			>

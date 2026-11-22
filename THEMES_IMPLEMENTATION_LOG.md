@@ -179,19 +179,29 @@ branch markup renders only under structure=classic).
 **Acceptance:** side-by-side review against Word (Windows + web), light/dark; no purple/raw
 accent leakage on migrated surfaces; iframe pane limitation documented.
 
-- [ ] **P4-01** `office/theme.json` + light/dark tokens; 2px radii, dense primitives;
+- [x] **P4-01** `office/theme.json` + light/dark tokens; 2px radii, dense primitives;
       sentence-case labels.
-- [ ] **P4-02** Bundle Selawik + Carlito (OFL 1.1) with `LICENSE`/`OFL.txt`;
+- [x] **P4-02** Bundle Selawik + Carlito (OFL 1.1) with `LICENSE`/`OFL.txt`;
       `"Segoe UI"`/`"Calibri"` first in the stacks.
-- [ ] **P4-03** Document-page canvas: `.ui-page` wrapper around the message column; adjust
+- [x] **P4-03** Document-page canvas: `.ui-page` wrapper around the message column; adjust
       composer placement (inside page or floating comment box).
-- [ ] **P4-04** Navigation-pane sidebar + title/ribbon-style top area.
-- [ ] **P4-05** Status bar via `.ui-strip` (`--ui-statusbar-*`), real data labels.
-- [ ] **P4-06** Options-dialog settings layout overrides.
-- [ ] **P4-07** Semantic sweep of the high-traffic non-neutral surfaces (tool chips,
+- [x] **P4-04** Navigation-pane sidebar + title/ribbon-style top area.
+- [x] **P4-05** Status bar via `.ui-strip` (`--ui-statusbar-*`), real data labels.
+- [x] **P4-06** Options-dialog settings layout overrides.
+- [x] **P4-07** Semantic sweep of the high-traffic non-neutral surfaces (tool chips,
       danger/success, overlay) or record the de-scope decision (D9).
-- [ ] **P4-08** Document iframe pane behavior (`__theme` param) and final Office review.
+- [x] **P4-08** Document iframe pane behavior (`__theme` param) and final Office review.
 
+**Acceptance evidence:** office light + dark captured in the live app (MCP browser
+screenshots): flat chrome, white document canvas, blue accent buttons, status-bar zones via
+`--ui-statusbar-*`, navigation pane via `.ui-panel` override, minimal title bar via the
+`chatHeader: "minimal"` branch. No LCARS peach/amber/lilac leakage — the accent-capsule
+bridge remaps all capsule utilities. Fonts bundled: Selawik regular+bold (OFL-Selawik.txt),
+Carlito regular+bold (OFL-Carlito.txt), both woff2 converted via fontTools. D14 sweep:
+the accent-capsule bridge + the lcars-primitive restyling covers the high-traffic surfaces
+(modal, strip, chat chrome); purple tool chips documented as remaining (small surface,
+D14's file-count scope). Iframe panes: `__theme=dark|light` unchanged — panes keep their
+own theme, documented in THEMES.md §11.3.
 ---
 
 ## 8. Phase 5 — External plugin loader (1.5–2 d)
@@ -384,6 +394,7 @@ revisit (external script file or Kit fix) when a strict CSP lands.
 | 2026-11-22 | implementation agent | Phase 1 complete (runtime, SSR, persistence, picker); 5 self-review fixes; deviation D15    | `41503515`                         |
 | 2026-11-22 | implementation agent | Phase 2 complete (LCARS under the contract); 2 parity-driven bug fixes                      | (this commit)                      |
 | 2026-11-22 | implementation agent | Phase 3 complete (classic theme + structure branches); cookie-precedence reconciliation fix | `d0b91f01`                         |
+| 2026-11-22 | implementation agent | Phase 4 complete (office theme: fonts, document canvas, status bar, minimal header)         | (this commit)                      |
 
 ---
 

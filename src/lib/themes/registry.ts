@@ -49,7 +49,9 @@ const lcarsManifest: ThemeManifest = themeManifestSchema.parse({
 	},
 	// Omitted keys fall back to LCARS_DEFAULT_LABELS; the explicit entries are
 	// documentation of the LCARS voice (all of them match the defaults).
-	labels: {},
+	labels: {
+		introTagline: "All systems nominal · ready for input",
+	},
 });
 
 const classicManifest: ThemeManifest = themeManifestSchema.parse({
@@ -71,7 +73,37 @@ const classicManifest: ThemeManifest = themeManifestSchema.parse({
  * classic/office land here as their phases (P3-01/P4-01) create their
  * manifests; the registry code is written against the full set from the start.
  */
-export const BUILTIN_THEMES: readonly ThemeManifest[] = [lcarsManifest, classicManifest];
+const officeManifest: ThemeManifest = themeManifestSchema.parse({
+	apiVersion: 1,
+	id: "office",
+	name: "Office",
+	version: "1.0.0",
+	description: "Document-style productivity look: white pages, blue accents, flat chrome.",
+	modes: ["light", "dark"],
+	chrome: {
+		statusStrip: "full",
+		chatHeader: "minimal",
+		sidebar: "plain",
+		structure: "office",
+	},
+	labels: {
+		modelsReady: "Models ready",
+		modelsWaiting: "Waiting for model server",
+		streaming: "Streaming",
+		idle: "Ready",
+		models: "{count} models",
+		modelsOne: "1 model",
+		mcp: "{count} MCP",
+		mcpOff: "MCP off",
+		introTagline: "Your document workspace",
+	},
+});
+
+export const BUILTIN_THEMES: readonly ThemeManifest[] = [
+	lcarsManifest,
+	classicManifest,
+	officeManifest,
+];
 
 const builtinById: ReadonlyMap<string, ThemeManifest> = new Map(
 	BUILTIN_THEMES.map((theme) => [theme.id, theme])
@@ -181,4 +213,9 @@ export function resolveLabel(
 	// Interpolate only on request: the SSR label resolution must return the raw
 	// template so the client can fill in the live count per render.
 	return params === undefined ? template : template.replace(/\{count\}/g, String(params.count));
+}
+
+/** The intro tagline label (ChatIntroduction), with LCARS fallback. */
+export function resolveIntroTagline(manifest: ThemeManifest): string {
+	return manifest.labels.introTagline ?? LCARS_DEFAULT_LABELS.introTagline ?? "";
 }

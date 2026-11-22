@@ -5,6 +5,7 @@ import { defaultThemeId } from "$lib/server/settingsValidation";
 import {
 	coerceThemeId,
 	resolveChrome,
+	resolveIntroTagline,
 	resolveLabel,
 	resolveManifest,
 	resolveMode,
@@ -85,6 +86,7 @@ export const load: LayoutServerLoad = async ({ locals, cookies }) => {
 			modes: manifest.modes,
 			chrome: resolveChrome(manifest),
 			labels: themeLabels(manifest),
+			introTagline: resolveIntroTagline(manifest),
 		},
 	};
 };

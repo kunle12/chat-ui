@@ -44,7 +44,11 @@ export const themeLabelsSchema = z
 			.string()
 			.max(80)
 			// Plain strings only — no HTML/Markdown reaches the strip markup.
-			.refine((v) => !/[<>{}]/.test(v), "labels must be plain text")
+			// `{count}` is the sanctioned interpolation placeholder.
+			.refine(
+				(v) => !/[<>]/.test(v) && v.replace(/\{count\}/g, "").indexOf("{") === -1,
+				"labels must be plain text (only {count} interpolation allowed)"
+			)
 	)
 	.default({});
 

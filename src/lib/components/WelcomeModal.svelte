@@ -18,18 +18,18 @@
 	<!-- Welcome modal. structure "classic" renders the original plain dialog
 	     (no LCARS access-panel chrome); lcars keeps the peach title bar. -->
 	<div class="ui-panel w-full overflow-hidden rounded-(--ui-radius-xl)">
-		{#if structure === "classic"}
+		{#if structure !== "lcars"}
 			<div class="flex flex-col gap-4 px-6 pt-6 pb-6">
-				<h2 class="text-2xl font-semibold text-ui-ink">
-					Welcome to {publicConfig.PUBLIC_APP_NAME}
+				<h2 class="text-xl font-semibold text-ui-ink">
+					{structure === "office" ? "Welcome" : `Welcome to ${publicConfig.PUBLIC_APP_NAME}`}
 				</h2>
 				<p class="text-sm leading-relaxed text-ui-muted">
-					This is a private AI assistant{publicConfig.PUBLIC_APP_NAME
-						? ` — ${publicConfig.PUBLIC_APP_NAME}`
-						: ""}.
+					{structure === "office"
+						? "Your document workspace is ready."
+						: `This is a private AI assistant — ${publicConfig.PUBLIC_APP_NAME}.`}
 				</p>
 				<button
-					class="mt-1 w-full rounded-lg bg-gray-900 py-2.5 text-sm font-medium text-white hover:bg-gray-800 dark:bg-white dark:text-gray-900 dark:hover:bg-gray-200"
+					class="text-ui-accent-text mt-1 w-full rounded-md bg-ui-accent py-2.5 text-sm font-semibold hover:opacity-90"
 					onclick={close}
 				>
 					Start chatting
