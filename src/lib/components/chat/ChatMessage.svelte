@@ -375,9 +375,11 @@
 			classNames="mt-5 size-3.5 flex-none select-none rounded-full shadow-lg max-sm:hidden"
 			animating={isLast && loading}
 		/>
-		<!-- .ui-msg-card: theme hook — assistant message card (classic gradient card, office document body). -->
+		<!-- .ui-msg-card: theme hook — assistant message card. Colors and radius
+		     come from the primitive (--ui-bubble-assistant-*), so classic/office
+		     restyle the whole card via the hook alone. -->
 		<div
-			class="ui-msg-card relative flex min-w-[60px] flex-col gap-2 rounded-[18px] border border-lcars-panel-edge/60 bg-lcars-panel/40 px-5 py-3.5 wrap-break-word text-lcars-ink/90 prose-pre:my-2"
+			class="ui-msg-card relative flex min-w-[60px] flex-col gap-2 border border-ui-panel-edge/60 px-5 py-3.5 wrap-break-word prose-pre:my-2"
 		>
 			{#if message.files?.length}
 				<div class="flex h-fit flex-wrap gap-x-5 gap-y-2">
@@ -684,7 +686,7 @@
 					<!-- .ui-bubble: theme hook — user message shape/colors
 					     (classic: plain text, office: comment block). -->
 					<p
-						class="ui-bubble disabled ml-auto w-fit max-w-[85%] appearance-none rounded-[22px_22px_6px_22px] bg-lcars-user-bubble px-5 py-3.5 text-left wrap-break-word whitespace-break-spaces text-lcars-user-ink"
+						class="ui-bubble disabled ml-auto w-fit max-w-[85%] appearance-none rounded-[22px_22px_6px_22px] bg-ui-user-bubble px-5 py-3.5 text-left wrap-break-word whitespace-break-spaces text-ui-user-ink"
 					>
 						{#each contentSegments as segment, i (i)}{#if segment.kind === "view"}<TrackioViewChip
 									view={segment.view}
@@ -717,7 +719,7 @@
 						}}
 					>
 						<textarea
-							class="ui-bubble w-full rounded-[22px] bg-lcars-user-bubble px-5 py-3.5 wrap-break-word whitespace-break-spaces text-lcars-user-ink *:h-max focus:outline-hidden"
+							class="ui-bubble w-full rounded-[22px] bg-ui-user-bubble px-5 py-3.5 wrap-break-word whitespace-break-spaces text-ui-user-ink *:h-max focus:outline-hidden"
 							rows="5"
 							bind:this={editContentEl}
 							value={message.content.trim()}

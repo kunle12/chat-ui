@@ -163,5 +163,7 @@ export function resolveLabel(
 	params?: { count?: number }
 ): string {
 	const template = manifest.labels[key] ?? LCARS_DEFAULT_LABELS[key] ?? "";
-	return template.replace(/\{count\}/g, String(params?.count ?? 0));
+	// Interpolate only on request: the SSR label resolution must return the raw
+	// template so the client can fill in the live count per render.
+	return params === undefined ? template : template.replace(/\{count\}/g, String(params.count));
 }

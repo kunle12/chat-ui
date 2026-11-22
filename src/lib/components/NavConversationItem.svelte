@@ -85,17 +85,17 @@
 </script>
 
 <div
-	class="group flex h-8 flex-none items-center gap-1.5 rounded-r-[18px] pr-1.5 pl-0 text-base text-lcars-muted hover:bg-lcars-peach/15 max-sm:h-10 sm:text-sm
-		{conv.id === page.params.id ? 'bg-lcars-panel text-lcars-ink' : ''}"
+	class="group flex h-8 flex-none items-center gap-1.5 rounded-r-[18px] pr-1.5 pl-0 text-base text-ui-muted hover:bg-ui-peach/15 max-sm:h-10 sm:text-sm
+		{conv.id === page.params.id ? 'bg-ui-panel text-ui-ink' : ''}"
 >
 	<span
 		class="ui-cap-r h-5 w-[3px] flex-none {conv.id === page.params.id
-			? 'bg-lcars-amber'
+			? 'bg-ui-amber'
 			: conv.mlAssistant
-				? 'bg-lcars-sky'
+				? 'bg-ui-sky'
 				: conv.managedBy
-					? 'bg-lcars-marigold'
-					: 'bg-lcars-peach/60'}"
+					? 'bg-ui-marigold'
+					: 'bg-ui-peach/60'}"
 	></span>
 	{#if conv.mlAssistant}
 		{@const ml = ML_TURN_BADGE[activeGenerations.statusFor(conv.id) ?? "idle"]}
@@ -168,7 +168,7 @@
 				}}
 			>
 				<DropdownMenu.Trigger
-					class="flex h-6 w-6 items-center justify-center rounded-full text-lcars-dim hover:bg-lcars-peach/25 hover:text-lcars-ink data-[state=open]:bg-lcars-peach/25 data-[state=open]:text-lcars-ink md:hidden md:group-hover:flex md:data-[state=open]:flex"
+					class="flex h-6 w-6 items-center justify-center rounded-full text-ui-dim hover:bg-ui-peach/25 hover:text-ui-ink data-[state=open]:bg-ui-peach/25 data-[state=open]:text-ui-ink md:hidden md:group-hover:flex md:data-[state=open]:flex"
 					aria-label="Conversation actions"
 					title="More options"
 				>
@@ -176,7 +176,7 @@
 				</DropdownMenu.Trigger>
 				<DropdownMenu.Portal>
 					<DropdownMenu.Content
-						class="z-50 min-w-36 rounded-[14px] border border-lcars-panel-edge bg-lcars-panel/95 p-1 text-lcars-ink shadow-lg backdrop-blur-sm"
+						class="z-50 min-w-36 rounded-[14px] border border-ui-panel-edge bg-ui-panel/95 p-1 text-ui-ink shadow-lg backdrop-blur-sm"
 						side="bottom"
 						align="end"
 						sideOffset={4}
@@ -186,7 +186,7 @@
 					>
 						{#if !readOnly}
 							<DropdownMenu.Item
-								class="flex h-9 items-center gap-2 rounded-md px-2 text-sm text-lcars-muted select-none focus-visible:outline-hidden data-highlighted:bg-lcars-peach/20 data-highlighted:text-lcars-ink sm:h-8"
+								class="flex h-9 items-center gap-2 rounded-md px-2 text-sm text-ui-muted select-none focus-visible:outline-hidden data-highlighted:bg-ui-peach/20 data-highlighted:text-ui-ink sm:h-8"
 								onSelect={() => (renameOpen = true)}
 							>
 								<CarbonEdit class="size-4 opacity-90" />

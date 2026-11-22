@@ -2,6 +2,11 @@
 
 @import "tailwindcss";
 
+/* Built-in theme token blocks (unlayered, scoped to :root[data-theme]) —
+   must come after the tailwind import so the scoped blocks win over
+   @layer theme defaults regardless of specificity (THEMES.md §5.1). */
+@import "./themes.css";
+
 @plugin "tailwind-scrollbar" {
 	nocompatible: true;
 }
@@ -54,9 +59,10 @@
 }
 
 @theme {
-	/* Warm LCARS neutrals. These replace the default gray scale app-wide so
-	   every existing `bg-white dark:bg-gray-900` / `text-gray-*` surface
-	   re-themes without touching each component. */
+	/* Warm LCARS neutrals — the default ramp (decision D11). Themes override
+	   the whole ramp per-theme via an unlayered scoped block (THEMES.md §6.4);
+	   utilities compile to var(--color-gray-*) so the override re-themes every
+	   existing surface without touching components. */
 	--color-gray-50: #faf6ef;
 	--color-gray-100: #f2eae0;
 	--color-gray-200: #e5d9cc;
@@ -72,69 +78,149 @@
 	--text-xxs: 0.625rem;
 	--text-smd: 0.94rem;
 
-	/* LCARS accent capsules (identical in both themes). */
-	--color-lcars-peach: #ffcc99;
-	--color-lcars-amber: #ff9933;
-	--color-lcars-lilac: #cc99cc;
-	--color-lcars-mauve: #c08bc0;
-	--color-lcars-sky: #99ccff;
-	--color-lcars-marigold: #ffcc66;
-	--color-lcars-on-peach: #4a2e12;
-	--color-lcars-on-amber: #3a2007;
-	--color-lcars-on-lilac: #3d2340;
-	--color-lcars-on-sky: #1e3357;
+	/* LCARS accent capsules (identical in both themes). Renamed from
+	   --color-lcars-* in Phase 2 (P2-03): utilities are bg-ui-peach, … */
+	--color-ui-peach: #ffcc99;
+	--color-ui-amber: #ff9933;
+	--color-ui-lilac: #cc99cc;
+	--color-ui-mauve: #c08bc0;
+	--color-ui-sky: #99ccff;
+	--color-ui-marigold: #ffcc66;
+	--color-ui-on-peach: #4a2e12;
+	--color-ui-on-amber: #3a2007;
+	--color-ui-on-lilac: #3d2340;
+	--color-ui-on-sky: #1e3357;
 
 	--font-sans: "Saira", system-ui, -apple-system, "Helvetica Neue", Arial, sans-serif;
 	--font-mono: "IBM Plex Mono", ui-monospace, "SF Mono", Menlo, Consolas, monospace;
 	--font-display: "Saira Extra Condensed", "Saira", system-ui, sans-serif;
 }
 
-/* Theme-dependent semantic tokens. Utilities such as `bg-lcars-panel` read
-   these, so a `.dark` flip re-themes every component that uses them. */
-:root {
-	--lcars-paper: #f2ece3;
-	--lcars-screen-1: #f8fbff;
-	--lcars-screen-2: #e8eef8;
-	--lcars-panel: #fbf7f1;
-	--lcars-panel-edge: rgba(120, 135, 170, 0.22);
-	--lcars-ink: #2a2630;
-	--lcars-muted: #6d5b72;
-	--lcars-dim: #8b7c8f;
-	--lcars-user-bubble: #f3e3f0;
-	--lcars-user-ink: #3d2340;
-	--lcars-accent-ink: #b4560e;
-	--lcars-ready: #63c08a;
-	--lcars-standby: #e8a33d;
-}
+/*
+  Semantic token contract defaults (THEMES.md §6): the LCARS values, on bare
+  :root as the documented fallback for themes that omit tokens. The
+  authoritative per-theme values live in src/lib/themes/<id>/theme.css; a
+  drift test in themes.spec.ts pins the LCARS block to these values.
 
-.dark {
-	--lcars-paper: #0e0f12;
-	--lcars-screen-1: #16181d;
-	--lcars-screen-2: #0f1114;
-	--lcars-panel: #131418;
-	--lcars-panel-edge: rgba(140, 150, 180, 0.16);
-	--lcars-ink: #ede7df;
-	--lcars-muted: #a79db2;
-	--lcars-dim: #8c849a;
-	--lcars-user-bubble: #2b2333;
-	--lcars-user-ink: #ead9e8;
-	--lcars-accent-ink: #ff9933;
-	--lcars-ready: #7bd3a0;
-	--lcars-standby: #f0b75a;
+  Mode flipping happens in the theme files via :root[data-theme].dark — there
+  is deliberately no `.dark { --ui-* }` block here (P2-02: the old literal
+  dark values would shadow every theme's dark palette).
+*/
+:root {
+	/* Surface */
+	--ui-bg: #f2ece3;
+	--ui-surface: #fbf7f1;
+	--ui-surface-raised: #fbf7f1;
+	--ui-surface-sunken: #e8eef8;
+	--ui-screen: #f8fbff;
+	--ui-overlay: rgba(0, 0, 0, 0.8);
+	--ui-border: rgba(120, 135, 170, 0.22);
+	--ui-border-strong: rgba(120, 135, 170, 0.45);
+	/* Text */
+	--ui-text: #2a2630;
+	--ui-text-muted: #6d5b72;
+	--ui-text-faint: #8b7c8f;
+	--ui-text-inverse: #3a2007;
+	--ui-link: #1e3357;
+	/* Actions */
+	--ui-accent: #ff9933;
+	--ui-accent-hover: #e8751c;
+	--ui-accent-text: #3a2007;
+	--ui-accent-ink: #b4560e;
+	--ui-danger: #d4574e;
+	--ui-danger-text: #ffffff;
+	--ui-warning: #e8a33d;
+	--ui-warning-text: #3a2007;
+	--ui-success: #63c08a;
+	--ui-success-text: #0f2e1c;
+	--ui-info: #99ccff;
+	--ui-info-text: #1e3357;
+	/* Chat */
+	--ui-bubble-user-bg: #f3e3f0;
+	--ui-bubble-user-text: #3d2340;
+	--ui-bubble-assistant-bg: rgba(251, 247, 241, 0.4);
+	--ui-bubble-assistant-text: color-mix(in srgb, #2a2630 90%, transparent);
+	--ui-code-bg: #fafafa;
+	--ui-code-text: #383a42;
+	/* States */
+	--ui-selection-bg: color-mix(in srgb, #ff9933 30%, transparent);
+	--ui-scrollbar-thumb: rgba(0, 0, 0, 0.1);
+	--ui-prose-body: #463c4c;
+	--ui-prose-heading: #17141c;
+	--ui-prose-link: #17141c;
+	--ui-prose-code: #17141c;
+	--ui-prose-quote: #17141c;
+	--ui-prose-rule: #e5d9cc;
+	--ui-syntax-comment: #a0a1a7;
+	--ui-syntax-string: #50a14f;
+	--ui-syntax-keyword: #a626a4;
+	--ui-syntax-number: #986801;
+	--ui-syntax-function: #4078f2;
+	--ui-theme-color: #f2ece3;
+	/* Shape */
+	--ui-radius-sm: 0.5rem;
+	--ui-radius-md: 0.625rem;
+	--ui-radius-lg: 1.125rem;
+	--ui-radius-xl: 22px;
+	--ui-radius-pill: 9999px;
+	--ui-border-width: 1px;
+	/* Depth */
+	--ui-shadow-sm: 0 0 #0000;
+	--ui-shadow-md: inset 0 2px 22px rgba(80, 95, 135, 0.1);
+	--ui-shadow-lg:
+		0 0 0 3px color-mix(in srgb, #ff9933 22%, transparent), 0 4px 14px -4px rgba(232, 117, 28, 0.55);
+	--ui-focus-ring-color: #ff9933;
+	--ui-focus-ring-width: 2px;
+	--ui-focus-ring-offset: 0px;
+	/* Motion */
+	--ui-motion-fast: 150ms;
+	--ui-motion-base: 1.8s;
+	--ui-motion-ease: ease;
+	/* Density */
+	--ui-control-height: 0px;
+	--ui-gutter: 1rem;
+	/* Type */
+	--ui-font-sans: "Saira", system-ui, -apple-system, "Helvetica Neue", Arial, sans-serif;
+	--ui-font-display: "Saira Extra Condensed", "Saira", system-ui, sans-serif;
+	--ui-font-mono: "IBM Plex Mono", ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+	--ui-font-size-base: 100%;
+	--ui-label-tracking: 0.2em;
+	--ui-label-transform: uppercase;
+
+	/* `--lcars-*` are deprecated aliases of `--ui-*` (P2-02), kept for one
+	   release so straggling var() references keep working. */
+	--lcars-paper: var(--ui-bg);
+	--lcars-screen-1: var(--ui-screen);
+	--lcars-screen-2: var(--ui-surface-sunken);
+	--lcars-panel: var(--ui-surface);
+	--lcars-panel-edge: var(--ui-border);
+	--lcars-ink: var(--ui-text);
+	--lcars-muted: var(--ui-text-muted);
+	--lcars-dim: var(--ui-text-faint);
+	--lcars-user-bubble: var(--ui-bubble-user-bg);
+	--lcars-user-ink: var(--ui-bubble-user-text);
+	--lcars-accent-ink: var(--ui-accent-ink);
+	--lcars-ready: var(--ui-success);
+	--lcars-standby: var(--ui-warning);
 }
 
 @theme inline {
-	--color-lcars-paper: var(--lcars-paper);
-	--color-lcars-screen-1: var(--lcars-screen-1);
-	--color-lcars-screen-2: var(--lcars-screen-2);
-	--color-lcars-panel: var(--lcars-panel);
-	--color-lcars-panel-edge: var(--lcars-panel-edge);
-	--color-lcars-ink: var(--lcars-ink);
-	--color-lcars-muted: var(--lcars-muted);
-	--color-lcars-dim: var(--lcars-dim);
-	--color-lcars-user-bubble: var(--lcars-user-bubble);
-	--color-lcars-user-ink: var(--lcars-user-ink);
-	--color-lcars-accent-ink: var(--lcars-accent-ink);
+	/* Semantic utilities: bg-ui-paper, text-ui-ink, ring-ui-border, … compile
+	   to var(--ui-*) and re-theme when a theme overrides the tokens. */
+	--color-ui-paper: var(--ui-bg);
+	--color-ui-screen-1: var(--ui-screen);
+	--color-ui-screen-2: var(--ui-surface-sunken);
+	--color-ui-panel: var(--ui-surface);
+	--color-ui-surface-raised: var(--ui-surface-raised);
+	--color-ui-panel-edge: var(--ui-border);
+	--color-ui-ink: var(--ui-text);
+	--color-ui-muted: var(--ui-text-muted);
+	--color-ui-dim: var(--ui-text-faint);
+	--color-ui-user-bubble: var(--ui-bubble-user-bg);
+	--color-ui-user-ink: var(--ui-bubble-user-text);
+	--color-ui-accent-ink: var(--ui-accent-ink);
+	--color-ui-accent: var(--ui-accent);
+	--color-ui-overlay: var(--ui-overlay);
 }
 
 /*
@@ -165,11 +251,19 @@
 	}
 
 	::selection {
-		background: color-mix(in srgb, var(--color-lcars-amber) 30%, transparent);
+		background: var(--ui-selection-bg);
 	}
 
 	:focus-visible {
-		outline-color: var(--color-lcars-amber);
+		outline-color: var(--ui-focus-ring-color);
+		outline-width: var(--ui-focus-ring-width);
+		outline-offset: var(--ui-focus-ring-offset);
+	}
+
+	/* Body type is a theme token (same stack as --font-sans for LCARS, so this
+	   is parity-neutral; office swaps the token to re-theme the whole UI). */
+	body {
+		font-family: var(--ui-font-sans);
 	}
 }
 
@@ -201,7 +295,11 @@ body {
 }
 
 @utility scrollbar-custom {
-	@apply scrollbar-thin scrollbar-thumb-black/10 scrollbar-track-transparent scrollbar-thumb-rounded-full dark:scrollbar-thumb-white/10 scrollbar-hover:scrollbar-thumb-black/20 dark:scrollbar-hover:scrollbar-thumb-white/20;
+	/* Thumb color is themeable via --ui-scrollbar-thumb; the token flips in
+	   dark mode, so no dark: variants are needed (P2-04). The hover-darkening
+	   the old black/10→black/20 utility pair provided is intentionally dropped
+	   (no hover token in the contract; parity noted in the log). */
+	@apply scrollbar-thin scrollbar-track-transparent scrollbar-thumb-rounded-full;
 
 	&::-webkit-scrollbar {
 		background-color: transparent;
@@ -210,19 +308,10 @@ body {
 	}
 
 	&::-webkit-scrollbar-thumb {
-		background-color: rgba(0, 0, 0, 0.1);
-		border-radius: 9999px;
+		background-color: var(--ui-scrollbar-thumb);
+		border-radius: var(--ui-radius-pill);
 	}
 
-	.dark &::-webkit-scrollbar {
-		background-color: rgba(17, 17, 17, 0.85);
-	}
-
-	.dark &::-webkit-scrollbar-thumb {
-		background-color: rgba(255, 255, 255, 0.1);
-	}
-
-	/* Rounded top/bottom caps for vertical scrollbars (Chrome/Edge/Safari) */
 	&::-webkit-scrollbar-track {
 		@apply rounded-full bg-clip-padding; /* clip bg to padding so caps look round */
 		/* space for the end caps — tweak with Tailwind spacing */
@@ -257,65 +346,68 @@ body {
 	/* Mono instrument text: kickers, readouts, chip labels. */
 	.ui-label,
 	.lcars-label {
-		font-family: var(--font-mono);
+		font-family: var(--ui-font-mono);
 		font-size: 0.5625rem;
 		line-height: 1.2;
 		font-weight: 500;
-		letter-spacing: 0.2em;
-		text-transform: uppercase;
+		letter-spacing: var(--ui-label-tracking);
+		text-transform: var(--ui-label-transform);
 	}
 
 	.ui-kicker,
 	.lcars-kicker {
-		font-family: var(--font-mono);
+		font-family: var(--ui-font-mono);
 		font-size: 0.59375rem;
 		line-height: 1.2;
 		letter-spacing: 0.3em;
-		text-transform: uppercase;
+		text-transform: var(--ui-label-transform);
 	}
 
 	/* Display face for panel titles. */
 	.ui-display,
 	.lcars-display {
-		font-family: var(--font-display);
+		font-family: var(--ui-font-display);
 		font-weight: 300;
 		letter-spacing: 0.14em;
-		text-transform: uppercase;
+		text-transform: var(--ui-label-transform);
 	}
 
-	/* The main rounded "screen" panel from the mockups. */
+	/* Assistant message card — the .ui-msg-card hook's default look. The
+	   bubble tokens carry the exact values the old utilities produced
+	   (surface at 40% alpha, ink at 90%), so this is visual-parity neutral. */
+	.ui-msg-card,
+	.lcars-msg-card {
+		border-radius: var(--ui-radius-lg);
+		background: var(--ui-bubble-assistant-bg);
+		color: var(--ui-bubble-assistant-text);
+	}
+
+	/* The main rounded "screen" panel from the mockups. The canvas gradient is
+	   a theme token (--ui-screen-image); office replaces it with a flat page. */
 	.ui-screen,
 	.lcars-screen {
-		background: linear-gradient(
-			168deg,
-			var(--lcars-screen-1) 0%,
-			color-mix(in srgb, var(--lcars-screen-2) 55%, var(--lcars-screen-1)) 46%,
-			var(--lcars-screen-2) 100%
-		);
-		border: 1px solid var(--lcars-panel-edge);
-		box-shadow: inset 0 2px 22px rgba(80, 95, 135, 0.1);
-	}
-
-	.dark .ui-screen,
-	.dark .lcars-screen {
-		box-shadow: inset 0 2px 22px rgba(0, 0, 0, 0.5);
+		background: var(--ui-screen-image, var(--ui-screen));
+		border: var(--ui-border-width) solid var(--ui-border);
+		border-radius: var(--ui-radius-xl);
+		box-shadow: var(--ui-shadow-md);
 	}
 
 	/* Flat panel surface (sidebar, cards, composer). */
 	.ui-panel,
 	.lcars-panel {
-		background: var(--lcars-panel);
-		border: 1px solid var(--lcars-panel-edge);
+		background: var(--ui-surface);
+		border: var(--ui-border-width) solid var(--ui-border);
+		box-shadow: var(--ui-shadow-sm);
 	}
 
 	/* The signature LCARS cut: a pill with one square side. */
 	.ui-cap-r,
 	.lcars-cap-r {
-		border-radius: 0 9999px 9999px 0;
+		border-radius: 0 var(--ui-radius-pill) var(--ui-radius-pill) 0;
 	}
 	.ui-cap-up,
 	.lcars-cap-up {
-		border-radius: 9999px 9999px 0 0;
+		border-radius: var(--ui-radius-pill) var(--ui-radius-pill) 0 0;
 	}
 
 	/* Small mono status/attribute chip. */
@@ -324,14 +416,15 @@ body {
 		display: inline-flex;
 		align-items: center;
 		gap: 0.375rem;
-		border-radius: 0 0.625rem 0.625rem 0;
-		background: color-mix(in srgb, var(--color-lcars-lilac) 26%, transparent);
-		color: var(--color-lcars-muted);
-		font-family: var(--font-mono);
+		min-height: var(--ui-control-height);
+		border-radius: 0 var(--ui-radius-md) var(--ui-radius-md) 0;
+		background: color-mix(in srgb, var(--color-ui-lilac) 26%, transparent);
+		color: var(--ui-text-muted);
+		font-family: var(--ui-font-mono);
 		font-size: 0.5625rem;
 		font-weight: 500;
 		letter-spacing: 0.12em;
-		text-transform: uppercase;
+		text-transform: var(--ui-label-transform);
 		padding: 0.2rem 0.55rem;
 		white-space: nowrap;
 	}
@@ -341,8 +434,8 @@ body {
 	.lcars-composer-fade {
 		background: linear-gradient(
 			to top,
-			var(--lcars-screen-2) 0%,
-			var(--lcars-screen-2) 62%,
+			var(--ui-surface-sunken) 0%,
+			var(--ui-surface-sunken) 62%,
 			transparent 100%
 		);
 	}
@@ -353,22 +446,22 @@ body {
 		display: inline-block;
 		width: 7px;
 		height: 7px;
-		border-radius: 9999px;
-		background: var(--lcars-ready);
-		box-shadow: 0 0 0 3px color-mix(in srgb, var(--lcars-ready) 18%, transparent);
+		border-radius: var(--ui-radius-pill);
+		background: var(--ui-success);
+		box-shadow: 0 0 0 3px color-mix(in srgb, var(--ui-success) 18%, transparent);
 	}
 
 	.ui-led.standby,
 	.lcars-led.standby {
-		background: var(--lcars-standby);
-		box-shadow: 0 0 0 3px color-mix(in srgb, var(--lcars-standby) 20%, transparent);
-		animation: lcars-pulse 1.8s ease-in-out infinite;
+		background: var(--ui-warning);
+		box-shadow: 0 0 0 3px color-mix(in srgb, var(--ui-warning) 20%, transparent);
+		animation: lcars-pulse var(--ui-motion-base) var(--ui-motion-ease) infinite;
 	}
 
 	/* The amber beacon orb (send button, standby state). */
 	.ui-beacon,
 	.lcars-beacon {
-		border-radius: 9999px;
+		border-radius: var(--ui-radius-pill);
 		background: radial-gradient(
 			circle at 38% 30%,
 			#ffe9c9 0%,
@@ -376,10 +469,8 @@ body {
 			#ff9933 68%,
 			#e8751c 100%
 		);
-		box-shadow:
-			0 0 0 3px color-mix(in srgb, var(--color-lcars-amber) 22%, transparent),
-			0 4px 14px -4px rgba(232, 117, 28, 0.55);
-		color: var(--color-lcars-on-amber);
+		box-shadow: var(--ui-shadow-lg);
+		color: var(--ui-text-inverse);
 	}
 
 	/* Capsule button, used for LCARS actions in chrome and settings. */
@@ -389,16 +480,17 @@ body {
 		align-items: center;
 		justify-content: center;
 		gap: 0.4rem;
-		border-radius: 9999px;
-		font-family: var(--font-mono);
+		min-height: var(--ui-control-height);
+		border-radius: var(--ui-radius-pill);
+		font-family: var(--ui-font-mono);
 		font-size: 0.625rem;
 		font-weight: 700;
 		letter-spacing: 0.16em;
-		text-transform: uppercase;
+		text-transform: var(--ui-label-transform);
 		padding: 0.55rem 1.1rem;
 		transition:
-			filter 150ms ease,
-			background-color 150ms ease;
+			filter var(--ui-motion-fast) var(--ui-motion-ease),
+			background-color var(--ui-motion-fast) var(--ui-motion-ease);
 	}
 	.ui-btn:hover:not(:disabled),
 	.lcars-btn:hover:not(:disabled) {
@@ -430,20 +522,23 @@ body {
   config values were merged into the generated `.prose` class itself.
 */
 .prose {
-	--tw-prose-body: var(--color-gray-700);
-	--tw-prose-headings: var(--color-gray-900);
+	/* The six prose tokens from the contract (THEMES.md §6.1) — themes
+	   override these per-mode; the remaining --tw-prose-* tiers keep reading
+	   the gray ramp (which themes also override). */
+	--tw-prose-body: var(--ui-prose-body);
+	--tw-prose-headings: var(--ui-prose-heading);
 	--tw-prose-lead: var(--color-gray-600);
-	--tw-prose-links: var(--color-gray-900);
+	--tw-prose-links: var(--ui-prose-link);
 	--tw-prose-bold: var(--color-gray-900);
 	--tw-prose-counters: var(--color-gray-500);
 	--tw-prose-bullets: var(--color-gray-300);
-	--tw-prose-hr: var(--color-gray-200);
-	--tw-prose-quotes: var(--color-gray-900);
-	--tw-prose-quote-borders: var(--color-gray-200);
+	--tw-prose-hr: var(--ui-prose-rule);
+	--tw-prose-quotes: var(--ui-prose-quote);
+	--tw-prose-quote-borders: var(--ui-prose-rule);
 	--tw-prose-captions: var(--color-gray-500);
 	--tw-prose-kbd: var(--color-gray-900);
 	--tw-prose-kbd-shadows: 10 10 10;
-	--tw-prose-code: var(--color-gray-900);
+	--tw-prose-code: var(--ui-prose-code);
 	--tw-prose-pre-code: var(--color-gray-200);
 	--tw-prose-pre-bg: var(--color-gray-800);
 	--tw-prose-th-borders: var(--color-gray-300);
@@ -537,7 +632,9 @@ body {
 .prose pre {
 	/* font-mono restated because the typography plugin makes `pre code` inherit from `pre`,
 	   and base-layer element styles (ChatInput) would otherwise turn `pre` sans-serif */
-	@apply border-[0.5px] bg-white font-mono text-gray-600 dark:border-gray-700 dark:bg-gray-900! dark:bg-inherit dark:text-inherit;
+	@apply border-[0.5px] font-mono dark:bg-inherit dark:text-inherit;
+	background-color: var(--ui-code-bg);
+	color: var(--ui-code-text);
 }
 
 .prose code:not(pre code) {
@@ -588,11 +685,11 @@ body {
 	display: inline-block;
 	background-image: linear-gradient(
 		90deg,
-		rgba(156, 163, 175, 1) 0%,
-		rgba(156, 163, 175, 0.6) 10%,
-		rgba(156, 163, 175, 0.6) 50%,
-		rgba(156, 163, 175, 0.6) 90%,
-		rgba(156, 163, 175, 1) 100%
+		var(--ui-shimmer-from) 0%,
+		var(--ui-shimmer-to) 10%,
+		var(--ui-shimmer-to) 50%,
+		var(--ui-shimmer-to) 90%,
+		var(--ui-shimmer-from) 100%
 	);
 	background-size: 220% 100%;
 	animation: router-shimmer 2.8s linear infinite;
@@ -600,15 +697,6 @@ body {
 	-webkit-background-clip: text;
 	color: transparent;
 	-webkit-text-fill-color: transparent;
-}
-
-.dark .router-shimmer {
-	background-image: linear-gradient(
-		90deg,
-		rgba(255, 255, 255, 0.15) 0%,
-		rgba(255, 255, 255, 0.7) 50%,
-		rgba(255, 255, 255, 0.15) 100%
-	);
 }
 
 @keyframes router-shimmer {
@@ -623,13 +711,9 @@ body {
 /* review comments anchored on a quote, set by quoteAnchors */
 ::highlight(review-quote) {
 	text-decoration-line: underline;
-	text-decoration-color: #fde68a;
+	text-decoration-color: var(--ui-highlight-bg);
 	text-decoration-thickness: 3px;
 	text-underline-offset: 2px;
-}
-
-.dark ::highlight(review-quote) {
-	text-decoration-color: rgb(251 191 36 / 0.45);
 }
 
 /* A citation into a paper open in the reader, written by the model as
@@ -645,20 +729,12 @@ a.paper-cite {
 	line-height: 1.45;
 	text-decoration: none;
 	white-space: nowrap;
-	color: #0f766e;
-	background: rgb(15 118 110 / 0.09);
-	box-shadow: 0 0 0 1px rgb(15 118 110 / 0.12);
+	color: var(--ui-cite-text);
+	background: var(--ui-cite-bg);
+	box-shadow: 0 0 0 1px color-mix(in srgb, var(--ui-cite-text) 12%, transparent);
 	cursor: pointer;
 	vertical-align: 0.05em;
 }
 a.paper-cite:hover {
-	background: rgb(15 118 110 / 0.16);
-}
-.dark a.paper-cite {
-	color: #5eead4;
-	background: rgb(94 234 212 / 0.1);
-	box-shadow: 0 0 0 1px rgb(94 234 212 / 0.14);
-}
-.dark a.paper-cite:hover {
-	background: rgb(94 234 212 / 0.18);
+	background: color-mix(in srgb, var(--ui-cite-text) 16%, transparent);
 }

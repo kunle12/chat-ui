@@ -83,6 +83,21 @@ test.describe("theme runtime", () => {
 		expect(migrated).toBe("light");
 	});
 
+	test("anonymous localStorage preference survives hydration (no account override)", async ({
+		page,
+	}) => {
+		// Regression: the hydration reconciler used to force the server default
+		// over the bootstrap's migrated localStorage preference for anonymous
+		// visitors. The pre-paint resolution must win when the account has no
+		// theme.
+		await page.addInitScript(() => localStorage.setItem("theme", "light"));
+		await page.goto("/");
+		await expect(page.locator("html")).not.toHaveClass(/dark/);
+		// After hydration + reconciliation the light preference must persist.
+		await page.waitForTimeout(300);
+		await expect(page.locator("html")).not.toHaveClass(/dark/);
+	});
+
 	test("?theme= deep link applies, coerces unknown ids and is stripped", async ({ page }) => {
 		await page.goto("/settings/application?theme=doesnotexist");
 		await expect(page.locator("html")).toHaveAttribute("data-theme", "lcars");

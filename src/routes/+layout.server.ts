@@ -57,6 +57,10 @@ export const load: LayoutServerLoad = async ({ locals, cookies }) => {
 	const fallback = defaultThemeId();
 	const id = coerceThemeId(accountTheme ?? cookies.get("ui-theme"), [], fallback);
 	const preference = accountMode ?? cookieMode(cookies.get("ui-mode"));
+	// Does the *account* express a theme? Anonymous visitors and users without
+	// a stored theme keep the pre-paint bootstrap's localStorage resolution —
+	// hydration must not override it (see the reconciliation in +layout.svelte).
+	const themeSource = accountTheme || accountMode ? "account" : "default";
 
 	const manifest = resolveManifest(id);
 	// Server-side `prefersDark` is unknowable; dark is the documented best
@@ -74,6 +78,7 @@ export const load: LayoutServerLoad = async ({ locals, cookies }) => {
 	return {
 		uiTheme: id,
 		uiThemeMode: preference,
+		uiThemeSource: themeSource,
 		themeMeta: {
 			id: manifest.id,
 			name: manifest.name,

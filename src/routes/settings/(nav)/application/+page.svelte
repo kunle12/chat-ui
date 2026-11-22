@@ -201,7 +201,7 @@
 {/snippet}
 
 <div class="flex w-full flex-col gap-4">
-	<h2 class="ui-display text-center text-2xl text-lcars-ink md:text-left">Application Settings</h2>
+	<h2 class="ui-display text-center text-2xl text-ui-ink md:text-left">Application Settings</h2>
 
 	{#if !!publicConfig.PUBLIC_COMMIT_SHA}
 		<div
@@ -297,8 +297,8 @@
 				     optimistic — the runtime persists through the settings store. -->
 				<div class="flex flex-col gap-2 py-3">
 					<div>
-						<div class="text-[13px] font-medium text-lcars-ink">Theme</div>
-						<p class="text-[12px] text-lcars-muted">
+						<div class="text-[13px] font-medium text-ui-ink">Theme</div>
+						<p class="text-[12px] text-ui-muted">
 							Pick a look; light/dark stays controllable below.
 						</p>
 					</div>
@@ -308,23 +308,23 @@
 								type="button"
 								class="flex items-center gap-2 rounded-xl border p-2 text-left transition-colors {activeThemeId ===
 								theme.id
-									? 'border-lcars-amber ring-1 ring-lcars-amber/40'
-									: 'border-lcars-panel-edge hover:border-lcars-muted'}"
+									? 'border-ui-amber ring-1 ring-ui-amber/40'
+									: 'border-ui-panel-edge hover:border-ui-muted'}"
 								onclick={() => selectTheme(theme.id)}
 								aria-pressed={activeThemeId === theme.id}
 							>
 								<span
-									class="flex h-8 w-8 flex-none overflow-hidden rounded-lg border border-lcars-panel-edge"
+									class="flex h-8 w-8 flex-none overflow-hidden rounded-lg border border-ui-panel-edge"
 								>
 									{#each themeSwatch(theme.id) as color, i (i)}
 										<span class="h-full flex-1" style:background={color}></span>
 									{/each}
 								</span>
 								<span class="min-w-0">
-									<span class="block truncate text-[13px] font-medium text-lcars-ink">
+									<span class="block truncate text-[13px] font-medium text-ui-ink">
 										{theme.name}
 									</span>
-									<span class="block text-[11px] text-lcars-muted">
+									<span class="block text-[11px] text-ui-muted">
 										{theme.modes.join(" / ")}
 									</span>
 								</span>

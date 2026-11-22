@@ -2,7 +2,7 @@
 	"comment": "Baseline for npm run check:theme-colors. Counts are occurrences of raw color utilities in src/**/*.svelte, counted with the exact commands embedded in scripts/check-theme-colors.ts. Lower is better: after migrating utilities to --ui-* tokens, lower the numbers here in the same commit.",
 	"date": "2026-11-22",
 	"commit": "8f63cbea (docs baseline; counts taken at Phase 0 start)",
-	"neutral": 3048,
+	"neutral": 3046,
 	"nonNeutral": 484,
 	"arbitraryHex": 212
 }

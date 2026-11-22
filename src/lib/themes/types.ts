@@ -233,6 +233,7 @@ export const REQUIRED_TOKEN_NAMES: readonly string[] = Object.keys(REQUIRED_TOKE
 /** Optional tokens (§6.2) — declared by themes that use them, wired in Phase 2. */
 export const OPTIONAL_TOKEN_NAMES: readonly string[] = Object.freeze([
 	"--ui-screen-image",
+	"--ui-accent-ink",
 	"--ui-topbar-bg",
 	"--ui-statusbar-bg",
 	"--ui-statusbar-text",

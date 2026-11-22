@@ -1,0 +1,208 @@
+/*
+ * LCARS theme tokens (THEMES.md §11.1, log tasks P2-01/P2-02).
+ *
+ * Token blocks are unlayered and scoped to :root[data-theme="lcars"] — the
+ * layering contract (§5.1). main.css carries the same values on bare :root as
+ * the documented fallback for themes that omit tokens; a drift test in
+ * themes.spec.ts pins the two blocks together.
+ *
+ * Every required token from src/lib/themes/types.ts is defined for both
+ * modes. `--lcars-*` names remain as aliases of `--ui-*` (main.css) for one
+ * release.
+ */
+
+:root[data-theme="lcars"] {
+	/* Surface */
+	--ui-bg: #f2ece3;
+	--ui-surface: #fbf7f1;
+	--ui-surface-raised: #fbf7f1;
+	--ui-surface-sunken: #e8eef8;
+	--ui-screen: #f8fbff;
+	--ui-screen-image: linear-gradient(
+		168deg,
+		#f8fbff 0%,
+		color-mix(in srgb, #e8eef8 55%, #f8fbff) 46%,
+		#e8eef8 100%
+	);
+	--ui-overlay: rgba(0, 0, 0, 0.8);
+	--ui-border: rgba(120, 135, 170, 0.22);
+	--ui-border-strong: rgba(120, 135, 170, 0.45);
+
+	/* Text */
+	--ui-text: #2a2630;
+	--ui-text-muted: #6d5b72;
+	--ui-text-faint: #8b7c8f;
+	--ui-text-inverse: #3a2007;
+	--ui-link: #1e3357;
+
+	/* Actions */
+	--ui-accent: #ff9933;
+	--ui-accent-hover: #e8751c;
+	--ui-accent-text: #3a2007;
+	--ui-accent-ink: #b4560e;
+	--ui-danger: #d4574e;
+	--ui-danger-text: #ffffff;
+	--ui-warning: #e8a33d;
+	--ui-warning-text: #3a2007;
+	--ui-success: #63c08a;
+	--ui-success-text: #0f2e1c;
+	--ui-info: #99ccff;
+	--ui-info-text: #1e3357;
+
+	/* Chat */
+	--ui-bubble-user-bg: #f3e3f0;
+	--ui-bubble-user-text: #3d2340;
+	--ui-bubble-assistant-bg: rgba(251, 247, 241, 0.4);
+	--ui-bubble-assistant-text: color-mix(in srgb, #2a2630 90%, transparent);
+	--ui-code-bg: #fafafa;
+	--ui-code-text: #383a42;
+
+	/* States */
+	--ui-selection-bg: color-mix(in srgb, #ff9933 30%, transparent);
+	--ui-scrollbar-thumb: rgba(0, 0, 0, 0.1);
+	--ui-prose-body: #463c4c;
+	--ui-prose-heading: #17141c;
+	--ui-prose-link: #17141c;
+	--ui-prose-code: #17141c;
+	--ui-prose-quote: #17141c;
+	--ui-prose-rule: #e5d9cc;
+	--ui-syntax-comment: #a0a1a7;
+	--ui-syntax-string: #50a14f;
+	--ui-syntax-keyword: #a626a4;
+	--ui-syntax-number: #986801;
+	--ui-syntax-function: #4078f2;
+	--ui-theme-color: #f2ece3;
+
+	/* Type (built-in CSS may use full stacks; the grammar allowlist in
+	   types.ts only constrains theme.json token maps) */
+	--ui-font-sans: "Saira", system-ui, -apple-system, "Helvetica Neue", Arial, sans-serif;
+	--ui-font-display: "Saira Extra Condensed", "Saira", system-ui, sans-serif;
+	--ui-font-mono: "IBM Plex Mono", ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+	--ui-font-size-base: 100%;
+	--ui-label-tracking: 0.2em;
+	--ui-label-transform: uppercase;
+
+	/* Shape */
+	--ui-radius-sm: 0.5rem;
+	--ui-radius-md: 0.625rem;
+	--ui-radius-lg: 1.125rem;
+	--ui-radius-xl: 22px;
+	--ui-radius-pill: 9999px;
+	--ui-border-width: 1px;
+
+	/* Depth */
+	--ui-shadow-sm: 0 0 #0000;
+	--ui-shadow-md: inset 0 2px 22px rgba(80, 95, 135, 0.1);
+	--ui-shadow-lg:
+		0 0 0 3px color-mix(in srgb, #ff9933 22%, transparent), 0 4px 14px -4px rgba(232, 117, 28, 0.55);
+	--ui-focus-ring-color: #ff9933;
+	--ui-focus-ring-width: 2px;
+	--ui-focus-ring-offset: 0px;
+
+	/* Motion */
+	--ui-motion-fast: 150ms;
+	--ui-motion-base: 1.8s;
+	--ui-motion-ease: ease;
+
+	/* Density: LCARS sizes controls by content — 0 keeps every primitive at
+	   its natural height (office overrides these). */
+	--ui-control-height: 0px;
+	--ui-gutter: 1rem;
+
+	/* Optional tokens wired in Phase 2 (§6.2) */
+	--ui-shimmer-from: rgba(156, 163, 175, 1);
+	--ui-shimmer-to: rgba(156, 163, 175, 0.6);
+	--ui-highlight-bg: #fde68a;
+	--ui-cite-bg: rgb(15 118 110 / 0.09);
+	--ui-cite-text: #0f766e;
+}
+
+:root[data-theme="lcars"].dark {
+	/* Mode-invariant tokens, redeclared so every required token is defined in
+	   every mode (THEMES.md §6.1) — copy-paste safe when authoring new themes. */
+	--ui-font-sans: "Saira", system-ui, -apple-system, "Helvetica Neue", Arial, sans-serif;
+	--ui-font-display: "Saira Extra Condensed", "Saira", system-ui, sans-serif;
+	--ui-font-mono: "IBM Plex Mono", ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+	--ui-font-size-base: 100%;
+	--ui-label-tracking: 0.2em;
+	--ui-label-transform: uppercase;
+	--ui-radius-sm: 0.5rem;
+	--ui-radius-md: 0.625rem;
+	--ui-radius-lg: 1.125rem;
+	--ui-radius-xl: 22px;
+	--ui-radius-pill: 9999px;
+	--ui-border-width: 1px;
+	--ui-shadow-sm: 0 0 #0000;
+	--ui-shadow-lg:
+		0 0 0 3px color-mix(in srgb, #ff9933 22%, transparent), 0 4px 14px -4px rgba(232, 117, 28, 0.55);
+	--ui-focus-ring-color: #ff9933;
+	--ui-focus-ring-width: 2px;
+	--ui-focus-ring-offset: 0px;
+	--ui-motion-fast: 150ms;
+	--ui-motion-base: 1.8s;
+	--ui-motion-ease: ease;
+	--ui-control-height: 0px;
+	--ui-gutter: 1rem;
+	--ui-bg: #0e0f12;
+	--ui-surface: #131418;
+	--ui-surface-raised: #131418;
+	--ui-surface-sunken: #0f1114;
+	--ui-screen: #16181d;
+	--ui-screen-image: linear-gradient(
+		168deg,
+		#16181d 0%,
+		color-mix(in srgb, #0f1114 55%, #16181d) 46%,
+		#0f1114 100%
+	);
+	--ui-overlay: rgba(0, 0, 0, 0.5);
+	--ui-border: rgba(140, 150, 180, 0.16);
+	--ui-border-strong: rgba(140, 150, 180, 0.4);
+
+	--ui-text: #ede7df;
+	--ui-text-muted: #a79db2;
+	--ui-text-faint: #8c849a;
+	--ui-text-inverse: #3a2007;
+	--ui-link: #99ccff;
+
+	--ui-accent: #ff9933;
+	--ui-accent-hover: #e8751c;
+	--ui-accent-text: #3a2007;
+	--ui-accent-ink: #ff9933;
+	--ui-danger: #e06c55;
+	--ui-danger-text: #ffffff;
+	--ui-warning: #f0b75a;
+	--ui-warning-text: #3a2007;
+	--ui-success: #7bd3a0;
+	--ui-success-text: #0f2e1c;
+	--ui-info: #99ccff;
+	--ui-info-text: #1e3357;
+
+	--ui-bubble-user-bg: #2b2333;
+	--ui-bubble-user-text: #ead9e8;
+	--ui-bubble-assistant-bg: rgba(19, 20, 24, 0.4);
+	--ui-bubble-assistant-text: color-mix(in srgb, #ede7df 90%, transparent);
+	--ui-code-bg: #282c34;
+	--ui-code-text: #abb2bf;
+
+	--ui-selection-bg: color-mix(in srgb, #ff9933 30%, transparent);
+	--ui-scrollbar-thumb: rgba(255, 255, 255, 0.1);
+	--ui-prose-body: color-mix(in srgb, #d3c3b8 50%, #a99aa6);
+	--ui-prose-heading: #e5d9cc;
+	--ui-prose-link: #e5d9cc;
+	--ui-prose-code: #e5d9cc;
+	--ui-prose-quote: #e5d9cc;
+	--ui-prose-rule: #463c4c;
+	--ui-syntax-comment: #5c6370;
+	--ui-syntax-string: #98c379;
+	--ui-syntax-keyword: #c678dd;
+	--ui-syntax-number: #d19a66;
+	--ui-syntax-function: #61aeee;
+	--ui-theme-color: #0e0f12;
+
+	--ui-shadow-md: inset 0 2px 22px rgba(0, 0, 0, 0.5);
+	--ui-highlight-bg: rgb(251 191 36 / 0.45);
+	--ui-cite-bg: rgb(94 234 212 / 0.1);
+	--ui-cite-text: #5eead4;
+	--ui-shimmer-from: rgba(255, 255, 255, 0.15);
+	--ui-shimmer-to: rgba(255, 255, 255, 0.7);
+}

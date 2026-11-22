@@ -15,7 +15,8 @@
 import { test, expect, E2E_APP_URL } from "./fixtures.ts";
 import { mkdirSync } from "node:fs";
 
-const BASELINE_DIR = "./tests/theme-baseline";
+/** Output directory; override to capture a candidate set without clobbering the baseline. */
+const BASELINE_DIR = process.env.THEME_BASELINE_DIR ?? "./tests/theme-baseline";
 
 /**
  * svelte.config.js loads `.env.local` (override: true) at build time, so a

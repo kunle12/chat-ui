@@ -140,6 +140,7 @@ export const load = async ({ fetch, url, data }) => {
 		// §9.2a): chrome/labels are rendered during SSR from these.
 		uiTheme: data.uiTheme,
 		uiThemeMode: data.uiThemeMode,
+		uiThemeSource: data.uiThemeSource as "account" | "default",
 		themeMeta: data.themeMeta as ThemeMeta,
 	};
 };

@@ -35,6 +35,7 @@
 		getActiveTheme,
 	} from "$lib/themes/themes.svelte";
 	import { resolveManifest } from "$lib/themes/registry";
+	import type { ThemeModePreference } from "$lib/themes/types";
 	import { createActiveGenerationsStore } from "$lib/stores/activeGenerations.svelte";
 	import { createNotificationsStore } from "$lib/stores/notifications.svelte";
 
@@ -161,15 +162,34 @@
 
 	// Reconciliation (THEMES.md §9.2b): the server rendered its best effort —
 	// it cannot see `prefers-color-scheme`, and a brand-new device has no
-	// ui-theme cookie yet. If the DOM disagrees with the account values
-	// (theme id) or with the runtime's seeded mode, re-apply after hydration:
-	// the documented one-frame correction. Skip persistence — the account
-	// already holds these values.
+	// ui-theme cookie yet.
+	//
+	// - Account theme (source === "account"): the account wins. If the DOM
+	//   disagrees (theme id or resolved mode), re-apply after hydration — the
+	//   documented one-frame correction. Skip persistence: the account already
+	//   holds these values.
+	// - No account theme: the pre-paint bootstrap already resolved
+	//   localStorage (including the migrated legacy key) — hydration must NOT
+	//   override it. Adopt the stored preference into the runtime state so
+	//   subscribers (iframe panes, toggle icon) see the applied mode.
 	if (browser) {
 		const html = document.documentElement;
-		const domDark = html.classList.contains("dark");
-		if (html.dataset.theme !== data.uiTheme || domDark !== (getActiveTheme().mode === "dark")) {
-			reconcileFromServer(data.uiTheme, data.uiThemeMode);
+		if (data.uiThemeSource === "account") {
+			const domDark = html.classList.contains("dark");
+			const modeMismatch =
+				data.uiThemeMode !== undefined && domDark !== (getActiveTheme().mode === "dark");
+			if (html.dataset.theme !== data.uiTheme || modeMismatch) {
+				reconcileFromServer(data.uiTheme, data.uiThemeMode);
+			}
+		} else {
+			const storedTheme = localStorage.getItem("ui-theme");
+			const storedMode = localStorage.getItem("ui-mode") ?? localStorage.getItem("theme");
+			if (storedTheme || storedMode) {
+				reconcileFromServer(
+					storedTheme ?? data.uiTheme,
+					(storedMode ?? undefined) as ThemeModePreference | undefined
+				);
+			}
 		}
 	}
 
@@ -331,7 +351,7 @@
 <NavigationLoadingBar />
 
 <div
-	class="fixed grid h-dvh w-screen grid-cols-1 grid-rows-[auto_1fr] overflow-hidden bg-lcars-paper text-smd text-lcars-ink {!isNavCollapsed
+	class="fixed grid h-dvh w-screen grid-cols-1 grid-rows-[auto_1fr] overflow-hidden bg-ui-paper text-smd text-ui-ink {!isNavCollapsed
 		? 'md:grid-cols-[260px_1fr]'
 		: 'md:grid-cols-[0px_1fr]'} transition-[300ms] [transition-property:grid-template-columns] md:grid-rows-[1fr] md:gap-x-2"
 >
@@ -378,7 +398,7 @@
 		{#if themeMeta.chrome.statusStrip !== "hidden"}
 			<div class="mt-2 hidden h-[38px] flex-none gap-2 min-[860px]:flex">
 				<div
-					class="ui-cap-up flex flex-[2] items-center justify-center bg-lcars-lilac px-4 text-lcars-on-lilac"
+					class="ui-cap-up flex flex-[2] items-center justify-center bg-ui-lilac px-4 text-ui-on-lilac"
 					title={data.modelsReady
 						? "The model upstream is answering"
 						: "The model upstream has not answered yet"}
@@ -388,14 +408,14 @@
 					</span>
 				</div>
 				<div
-					class="ui-cap-up flex flex-1 items-center justify-center bg-lcars-sky px-4 text-lcars-on-sky"
+					class="ui-cap-up flex flex-1 items-center justify-center bg-ui-sky px-4 text-ui-on-sky"
 				>
 					<span class="ui-label font-bold">
 						{$loading ? themeMeta.labels.streaming : themeMeta.labels.idle}
 					</span>
 				</div>
 				<div
-					class="ui-cap-up flex flex-[1.4] items-center justify-center bg-lcars-peach px-4 text-lcars-on-peach"
+					class="ui-cap-up flex flex-[1.4] items-center justify-center bg-ui-peach px-4 text-ui-on-peach"
 				>
 					<span class="ui-label font-bold">
 						{data.models.filter((m) => !m.unlisted).length === 1
@@ -407,7 +427,7 @@
 					</span>
 				</div>
 				<div
-					class="ui-cap-up flex flex-[0.55] items-center justify-center bg-lcars-amber px-3 text-lcars-on-amber"
+					class="ui-cap-up flex flex-[0.55] items-center justify-center bg-ui-amber px-3 text-ui-on-amber"
 				>
 					<span class="ui-label font-bold">
 						{$enabledServersCount > 0
