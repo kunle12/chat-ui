@@ -23,11 +23,12 @@
 <div
 	class="my-auto grid -translate-y-16 items-center justify-center gap-8 text-center md:-translate-y-12"
 >
-	<div
-		class="flex items-center justify-center rounded-xl text-[1.6rem] font-semibold select-none md:text-[2.55rem]"
-	>
-		<Logo classNames="size-[2.55rem] md:size-[4.25rem] dark:invert mr-0.5" />
-		{publicConfig.PUBLIC_APP_NAME}
+	<div class="flex flex-col items-center justify-center gap-3 select-none">
+		<Logo classNames="size-[3.25rem] dark:invert md:size-[4.75rem]" />
+		<div class="lcars-display text-[1.6rem] text-lcars-ink md:text-[2.55rem]">
+			{publicConfig.PUBLIC_APP_NAME}
+		</div>
+		<div class="lcars-kicker text-lcars-dim">All systems nominal · ready for input</div>
 	</div>
 	{@render children?.()}
 	<!-- <div class="lg:col-span-1">

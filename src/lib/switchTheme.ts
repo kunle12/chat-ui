@@ -35,7 +35,7 @@ export function subscribeToTheme(subscriber: ThemeSubscriber) {
 function setMetaThemeColor(isDark: boolean) {
 	const metaTheme = document.querySelector('meta[name="theme-color"]') as HTMLMetaElement | null;
 	if (!metaTheme) return;
-	metaTheme.setAttribute("content", isDark ? "rgb(26, 36, 50)" : "rgb(249, 250, 251)");
+	metaTheme.setAttribute("content", isDark ? "#0E0F12" : "#F2ECE3");
 }
 
 function applyDarkClass(isDark: boolean) {
@@ -52,8 +52,9 @@ export function getThemePreference(): ThemePreference {
 		currentPreference = raw;
 		return raw;
 	}
-	currentPreference = "system";
-	return "system";
+	// LCARS defaults to dark when the user has never chosen a theme.
+	currentPreference = "dark";
+	return "dark";
 }
 
 /**

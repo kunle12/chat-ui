@@ -9,21 +9,132 @@
 
 @custom-variant dark (&:where(.dark, .dark *));
 
+/* ---------------------------------------------------------------------------
+   LCARS typefaces — self-hosted (bundled by Vite, base-path safe). The design
+   forbids third-party requests, so no CDN link. Source files live in
+   src/styles/fonts/ and come from the design mockups.
+   - Saira: UI text (variable 100..900)
+   - Saira Extra Condensed: display titles and headlines
+   - IBM Plex Mono: instrument readouts (stardates, codes, chip labels)
+   --------------------------------------------------------------------------- */
+@font-face {
+	font-family: "Saira";
+	font-style: normal;
+	font-weight: 100 900;
+	font-display: swap;
+	src: url("./fonts/saira-var.woff2") format("woff2");
+}
+@font-face {
+	font-family: "Saira Extra Condensed";
+	font-style: normal;
+	font-weight: 300;
+	font-display: swap;
+	src: url("./fonts/saira-extra-condensed-300.woff2") format("woff2");
+}
+@font-face {
+	font-family: "Saira Extra Condensed";
+	font-style: normal;
+	font-weight: 400;
+	font-display: swap;
+	src: url("./fonts/saira-extra-condensed-400.woff2") format("woff2");
+}
+@font-face {
+	font-family: "IBM Plex Mono";
+	font-style: normal;
+	font-weight: 400;
+	font-display: swap;
+	src: url("./fonts/ibm-plex-mono-400.woff2") format("woff2");
+}
+@font-face {
+	font-family: "IBM Plex Mono";
+	font-style: normal;
+	font-weight: 500;
+	font-display: swap;
+	src: url("./fonts/ibm-plex-mono-500.woff2") format("woff2");
+}
+
 @theme {
-	--color-gray-50: #fafafa;
-	--color-gray-100: #f5f5f5;
-	--color-gray-200: #e5e5e5;
-	--color-gray-300: #d4d4d4;
-	--color-gray-400: #a3a3a3;
-	--color-gray-500: #737373;
-	--color-gray-600: #454545;
-	--color-gray-700: #2e2e2e;
-	--color-gray-800: #1a1a1a;
-	--color-gray-900: #0a0a0a;
-	--color-gray-950: #000000;
+	/* Warm LCARS neutrals. These replace the default gray scale app-wide so
+	   every existing `bg-white dark:bg-gray-900` / `text-gray-*` surface
+	   re-themes without touching each component. */
+	--color-gray-50: #faf6ef;
+	--color-gray-100: #f2eae0;
+	--color-gray-200: #e5d9cc;
+	--color-gray-300: #d3c3b8;
+	--color-gray-400: #a99aa6;
+	--color-gray-500: #7e7080;
+	--color-gray-600: #5e5263;
+	--color-gray-700: #463c4c;
+	--color-gray-800: #2b2532;
+	--color-gray-900: #17141c;
+	--color-gray-950: #0e0f12;
 
 	--text-xxs: 0.625rem;
 	--text-smd: 0.94rem;
+
+	/* LCARS accent capsules (identical in both themes). */
+	--color-lcars-peach: #ffcc99;
+	--color-lcars-amber: #ff9933;
+	--color-lcars-lilac: #cc99cc;
+	--color-lcars-mauve: #c08bc0;
+	--color-lcars-sky: #99ccff;
+	--color-lcars-marigold: #ffcc66;
+	--color-lcars-on-peach: #4a2e12;
+	--color-lcars-on-amber: #3a2007;
+	--color-lcars-on-lilac: #3d2340;
+	--color-lcars-on-sky: #1e3357;
+
+	--font-sans: "Saira", system-ui, -apple-system, "Helvetica Neue", Arial, sans-serif;
+	--font-mono: "IBM Plex Mono", ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+	--font-display: "Saira Extra Condensed", "Saira", system-ui, sans-serif;
+}
+
+/* Theme-dependent semantic tokens. Utilities such as `bg-lcars-panel` read
+   these, so a `.dark` flip re-themes every component that uses them. */
+:root {
+	--lcars-paper: #f2ece3;
+	--lcars-screen-1: #f8fbff;
+	--lcars-screen-2: #e8eef8;
+	--lcars-panel: #fbf7f1;
+	--lcars-panel-edge: rgba(120, 135, 170, 0.22);
+	--lcars-ink: #2a2630;
+	--lcars-muted: #6d5b72;
+	--lcars-dim: #8b7c8f;
+	--lcars-user-bubble: #f3e3f0;
+	--lcars-user-ink: #3d2340;
+	--lcars-accent-ink: #b4560e;
+	--lcars-ready: #63c08a;
+	--lcars-standby: #e8a33d;
+}
+
+.dark {
+	--lcars-paper: #0e0f12;
+	--lcars-screen-1: #16181d;
+	--lcars-screen-2: #0f1114;
+	--lcars-panel: #131418;
+	--lcars-panel-edge: rgba(140, 150, 180, 0.16);
+	--lcars-ink: #ede7df;
+	--lcars-muted: #a79db2;
+	--lcars-dim: #8c849a;
+	--lcars-user-bubble: #2b2333;
+	--lcars-user-ink: #ead9e8;
+	--lcars-accent-ink: #ff9933;
+	--lcars-ready: #7bd3a0;
+	--lcars-standby: #f0b75a;
+}
+
+@theme inline {
+	--color-lcars-paper: var(--lcars-paper);
+	--color-lcars-screen-1: var(--lcars-screen-1);
+	--color-lcars-screen-2: var(--lcars-screen-2);
+	--color-lcars-panel: var(--lcars-panel);
+	--color-lcars-panel-edge: var(--lcars-panel-edge);
+	--color-lcars-ink: var(--lcars-ink);
+	--color-lcars-muted: var(--lcars-muted);
+	--color-lcars-dim: var(--lcars-dim);
+	--color-lcars-user-bubble: var(--lcars-user-bubble);
+	--color-lcars-user-ink: var(--lcars-user-ink);
+	--color-lcars-accent-ink: var(--lcars-accent-ink);
 }
 
 /*
@@ -51,6 +162,14 @@
 	::placeholder {
 		color: var(--color-gray-400);
 		opacity: 1;
+	}
+
+	::selection {
+		background: color-mix(in srgb, var(--color-lcars-amber) 30%, transparent);
+	}
+
+	:focus-visible {
+		outline-color: var(--color-lcars-amber);
 	}
 }
 
@@ -123,6 +242,165 @@ body {
 
 @utility no-scrollbar {
 	@apply [scrollbar-width:none] [-ms-overflow-style:none] [&::-ms-scrollbar]:hidden [&::-webkit-scrollbar]:hidden;
+}
+
+/* ---------------------------------------------------------------------------
+   LCARS primitives. Media queries follow the design mockups: rails and the
+   bottom status strip disappear below 860px, the screen tightens to 18px
+   radius and 10px margins on phones.
+   --------------------------------------------------------------------------- */
+@layer components {
+	/* Mono instrument text: kickers, readouts, chip labels. */
+	.lcars-label {
+		font-family: var(--font-mono);
+		font-size: 0.5625rem;
+		line-height: 1.2;
+		font-weight: 500;
+		letter-spacing: 0.2em;
+		text-transform: uppercase;
+	}
+
+	.lcars-kicker {
+		font-family: var(--font-mono);
+		font-size: 0.59375rem;
+		line-height: 1.2;
+		letter-spacing: 0.3em;
+		text-transform: uppercase;
+	}
+
+	/* Display face for panel titles. */
+	.lcars-display {
+		font-family: var(--font-display);
+		font-weight: 300;
+		letter-spacing: 0.14em;
+		text-transform: uppercase;
+	}
+
+	/* The main rounded "screen" panel from the mockups. */
+	.lcars-screen {
+		background: linear-gradient(
+			168deg,
+			var(--lcars-screen-1) 0%,
+			color-mix(in srgb, var(--lcars-screen-2) 55%, var(--lcars-screen-1)) 46%,
+			var(--lcars-screen-2) 100%
+		);
+		border: 1px solid var(--lcars-panel-edge);
+		box-shadow: inset 0 2px 22px rgba(80, 95, 135, 0.1);
+	}
+
+	.dark .lcars-screen {
+		box-shadow: inset 0 2px 22px rgba(0, 0, 0, 0.5);
+	}
+
+	/* Flat panel surface (sidebar, cards, composer). */
+	.lcars-panel {
+		background: var(--lcars-panel);
+		border: 1px solid var(--lcars-panel-edge);
+	}
+
+	/* The signature LCARS cut: a pill with one square side. */
+	.lcars-cap-r {
+		border-radius: 0 9999px 9999px 0;
+	}
+	.lcars-cap-up {
+		border-radius: 9999px 9999px 0 0;
+	}
+
+	/* Small mono status/attribute chip. */
+	.lcars-chip {
+		display: inline-flex;
+		align-items: center;
+		gap: 0.375rem;
+		border-radius: 0 0.625rem 0.625rem 0;
+		background: color-mix(in srgb, var(--color-lcars-lilac) 26%, transparent);
+		color: var(--color-lcars-muted);
+		font-family: var(--font-mono);
+		font-size: 0.5625rem;
+		font-weight: 500;
+		letter-spacing: 0.12em;
+		text-transform: uppercase;
+		padding: 0.2rem 0.55rem;
+		white-space: nowrap;
+	}
+
+	/* Fade behind the composer overlay so messages scroll out under it. */
+	.lcars-composer-fade {
+		background: linear-gradient(
+			to top,
+			var(--lcars-screen-2) 0%,
+			var(--lcars-screen-2) 62%,
+			transparent 100%
+		);
+	}
+
+	/* Status LED: green when ready, amber while waiting. */
+	.lcars-led {
+		display: inline-block;
+		width: 7px;
+		height: 7px;
+		border-radius: 9999px;
+		background: var(--lcars-ready);
+		box-shadow: 0 0 0 3px color-mix(in srgb, var(--lcars-ready) 18%, transparent);
+	}
+
+	.lcars-led.standby {
+		background: var(--lcars-standby);
+		box-shadow: 0 0 0 3px color-mix(in srgb, var(--lcars-standby) 20%, transparent);
+		animation: lcars-pulse 1.8s ease-in-out infinite;
+	}
+
+	/* The amber beacon orb (send button, standby state). */
+	.lcars-beacon {
+		border-radius: 9999px;
+		background: radial-gradient(
+			circle at 38% 30%,
+			#ffe9c9 0%,
+			#ffc078 38%,
+			#ff9933 68%,
+			#e8751c 100%
+		);
+		box-shadow:
+			0 0 0 3px color-mix(in srgb, var(--color-lcars-amber) 22%, transparent),
+			0 4px 14px -4px rgba(232, 117, 28, 0.55);
+		color: var(--color-lcars-on-amber);
+	}
+
+	/* Capsule button, used for LCARS actions in chrome and settings. */
+	.lcars-btn {
+		display: inline-flex;
+		align-items: center;
+		justify-content: center;
+		gap: 0.4rem;
+		border-radius: 9999px;
+		font-family: var(--font-mono);
+		font-size: 0.625rem;
+		font-weight: 700;
+		letter-spacing: 0.16em;
+		text-transform: uppercase;
+		padding: 0.55rem 1.1rem;
+		transition:
+			filter 150ms ease,
+			background-color 150ms ease;
+	}
+	.lcars-btn:hover:not(:disabled) {
+		filter: brightness(1.06);
+	}
+
+	@keyframes lcars-pulse {
+		0%,
+		100% {
+			opacity: 1;
+		}
+		50% {
+			opacity: 0.45;
+		}
+	}
+
+	@media (prefers-reduced-motion: reduce) {
+		.lcars-led.standby {
+			animation: none;
+		}
+	}
 }
 
 /*

@@ -973,6 +973,7 @@
 		onstop={stopGeneration}
 		onqueuedturn={() => resyncTurn()}
 		models={data.models}
+		modelsReady={data.modelsReady}
 		{currentModel}
 	/>
 {:else}

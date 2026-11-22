@@ -85,9 +85,18 @@
 </script>
 
 <div
-	class="group flex h-8 flex-none items-center gap-1.5 rounded-lg pr-1.5 pl-2 text-base text-gray-600 hover:bg-gray-100 max-sm:h-10 sm:text-sm dark:text-gray-300 dark:hover:bg-gray-700
-		{conv.id === page.params.id ? 'bg-gray-100 dark:bg-gray-700' : ''}"
+	class="group flex h-8 flex-none items-center gap-1.5 rounded-r-[18px] pr-1.5 pl-0 text-base text-lcars-muted hover:bg-lcars-peach/15 max-sm:h-10 sm:text-sm
+		{conv.id === page.params.id ? 'bg-lcars-panel text-lcars-ink' : ''}"
 >
+	<span
+		class="lcars-cap-r h-5 w-[3px] flex-none {conv.id === page.params.id
+			? 'bg-lcars-amber'
+			: conv.mlAssistant
+				? 'bg-lcars-sky'
+				: conv.managedBy
+					? 'bg-lcars-marigold'
+					: 'bg-lcars-peach/60'}"
+	></span>
 	{#if conv.mlAssistant}
 		{@const ml = ML_TURN_BADGE[activeGenerations.statusFor(conv.id) ?? "idle"]}
 		<!-- The mode's own gold, in the strip's palette. A filled glyph rather than
@@ -136,7 +145,7 @@
 			data-sveltekit-noscroll
 			data-sveltekit-preload-data="tap"
 			href="{base}/conversation/{conv.id}"
-			class="min-w-0 flex-1 truncate py-2 first-letter:uppercase"
+			class="min-w-0 flex-1 truncate py-2 pl-1.5 first-letter:uppercase"
 			onclick={(e) => {
 				if (e.detail >= 2) {
 					e.preventDefault();
@@ -159,7 +168,7 @@
 				}}
 			>
 				<DropdownMenu.Trigger
-					class="flex h-6 w-6 items-center justify-center rounded-md text-gray-400 hover:bg-gray-200 hover:text-gray-600 data-[state=open]:bg-gray-200 data-[state=open]:text-gray-600 md:hidden md:group-hover:flex md:data-[state=open]:flex dark:hover:bg-gray-600 dark:hover:text-gray-200 dark:data-[state=open]:bg-gray-600 dark:data-[state=open]:text-gray-200"
+					class="flex h-6 w-6 items-center justify-center rounded-full text-lcars-dim hover:bg-lcars-peach/25 hover:text-lcars-ink data-[state=open]:bg-lcars-peach/25 data-[state=open]:text-lcars-ink md:hidden md:group-hover:flex md:data-[state=open]:flex"
 					aria-label="Conversation actions"
 					title="More options"
 				>
@@ -167,7 +176,7 @@
 				</DropdownMenu.Trigger>
 				<DropdownMenu.Portal>
 					<DropdownMenu.Content
-						class="z-50 min-w-36 rounded-xl border border-gray-200 bg-white/95 p-1 text-gray-800 shadow-lg backdrop-blur-sm dark:border-gray-700/60 dark:bg-gray-800/95 dark:text-gray-100"
+						class="z-50 min-w-36 rounded-[14px] border border-lcars-panel-edge bg-lcars-panel/95 p-1 text-lcars-ink shadow-lg backdrop-blur-sm"
 						side="bottom"
 						align="end"
 						sideOffset={4}
@@ -177,17 +186,17 @@
 					>
 						{#if !readOnly}
 							<DropdownMenu.Item
-								class="flex h-9 items-center gap-2 rounded-md px-2 text-sm text-gray-700 select-none focus-visible:outline-hidden data-highlighted:bg-gray-100 sm:h-8 dark:text-gray-200 dark:data-highlighted:bg-white/10"
+								class="flex h-9 items-center gap-2 rounded-md px-2 text-sm text-lcars-muted select-none focus-visible:outline-hidden data-highlighted:bg-lcars-peach/20 data-highlighted:text-lcars-ink sm:h-8"
 								onSelect={() => (renameOpen = true)}
 							>
-								<CarbonEdit class="size-4 opacity-90 dark:opacity-80" />
+								<CarbonEdit class="size-4 opacity-90" />
 								Rename
 							</DropdownMenu.Item>{/if}
 						<DropdownMenu.Item
-							class="flex h-9 items-center gap-2 rounded-md px-2 text-sm text-red-500 select-none focus-visible:outline-hidden data-highlighted:bg-red-50 data-highlighted:text-red-600 sm:h-8 dark:text-red-400 dark:data-highlighted:bg-red-500/10 dark:data-highlighted:text-red-400"
+							class="flex h-9 items-center gap-2 rounded-md px-2 text-sm text-red-400 select-none focus-visible:outline-hidden data-highlighted:bg-red-500/10 data-highlighted:text-red-400 sm:h-8"
 							onSelect={() => (deleteOpen = true)}
 						>
-							<CarbonTrashCan class="size-4 opacity-90 dark:opacity-80" />
+							<CarbonTrashCan class="size-4 opacity-90" />
 							Delete
 						</DropdownMenu.Item>
 					</DropdownMenu.Content>

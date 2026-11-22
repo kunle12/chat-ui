@@ -92,7 +92,7 @@
 				bind:this={modalEl}
 				onkeydown={handleKeydown}
 				class={[
-					"relative mx-auto scrollbar-custom max-h-[95dvh] max-w-[90dvw] overflow-x-hidden overflow-y-auto rounded-2xl bg-white shadow-2xl outline-hidden dark:bg-gray-800 dark:text-gray-200 dark:ring-1 dark:ring-white/15",
+					"relative mx-auto scrollbar-custom max-h-[95dvh] max-w-[90dvw] overflow-x-hidden overflow-y-auto rounded-[22px] bg-lcars-panel text-lcars-ink shadow-2xl ring-1 ring-lcars-panel-edge outline-hidden",
 					width,
 				]}
 			>
@@ -112,7 +112,7 @@
 				onkeydown={handleKeydown}
 				in:fly={{ y: 100 }}
 				class={[
-					"relative mx-auto scrollbar-custom max-h-[95dvh] max-w-[90dvw] overflow-x-hidden overflow-y-auto rounded-2xl bg-white shadow-2xl outline-hidden dark:bg-gray-800 dark:text-gray-200 dark:ring-1 dark:ring-white/15",
+					"relative mx-auto scrollbar-custom max-h-[95dvh] max-w-[90dvw] overflow-x-hidden overflow-y-auto rounded-[22px] bg-lcars-panel text-lcars-ink shadow-2xl ring-1 ring-lcars-panel-edge outline-hidden",
 					width,
 				]}
 			>

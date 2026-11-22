@@ -376,7 +376,7 @@
 			animating={isLast && loading}
 		/>
 		<div
-			class="relative flex min-w-[60px] flex-col gap-2 rounded-2xl border border-gray-100 bg-linear-to-br from-gray-50 px-5 py-3.5 wrap-break-word text-gray-600 dark:border-gray-800 dark:from-gray-800/80 dark:text-gray-300 prose-pre:my-2"
+			class="relative flex min-w-[60px] flex-col gap-2 rounded-[18px] border border-lcars-panel-edge/60 bg-lcars-panel/40 px-5 py-3.5 wrap-break-word text-lcars-ink/90 prose-pre:my-2"
 		>
 			{#if message.files?.length}
 				<div class="flex h-fit flex-wrap gap-x-5 gap-y-2">
@@ -681,7 +681,7 @@
 			<div class="flex w-full flex-row flex-nowrap">
 				{#if !editMode}
 					<p
-						class="disabled w-full appearance-none bg-inherit px-5 py-3.5 text-wrap wrap-break-word whitespace-break-spaces text-gray-500 dark:text-gray-400"
+						class="disabled ml-auto w-fit max-w-[85%] appearance-none rounded-[22px_22px_6px_22px] bg-lcars-user-bubble px-5 py-3.5 text-left wrap-break-word whitespace-break-spaces text-lcars-user-ink"
 					>
 						{#each contentSegments as segment, i (i)}{#if segment.kind === "view"}<TrackioViewChip
 									view={segment.view}
@@ -714,7 +714,7 @@
 						}}
 					>
 						<textarea
-							class="w-full rounded-xl bg-gray-100 px-5 py-3.5 wrap-break-word whitespace-break-spaces text-gray-500 *:h-max focus:outline-hidden dark:bg-gray-800 dark:text-gray-400"
+							class="w-full rounded-[22px] bg-lcars-user-bubble px-5 py-3.5 wrap-break-word whitespace-break-spaces text-lcars-user-ink *:h-max focus:outline-hidden"
 							rows="5"
 							bind:this={editContentEl}
 							value={message.content.trim()}

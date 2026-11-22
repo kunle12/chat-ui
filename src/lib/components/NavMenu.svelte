@@ -129,33 +129,34 @@
 	});
 </script>
 
-<div
-	class="sticky top-0 flex flex-none touch-none items-center justify-between px-1.5 py-3.5 max-sm:pt-0"
->
+<div class="sticky top-0 z-10 flex flex-none items-center gap-2 px-2 pt-3 pb-3 max-sm:pt-0">
 	<a
-		class="flex items-center rounded-xl text-lg font-semibold select-none"
+		class="lcars-cap-r flex h-10 min-w-0 flex-1 items-center gap-2 bg-lcars-peach px-3 text-lcars-on-peach select-none"
 		href="{publicConfig.PUBLIC_ORIGIN}{base}/"
 	>
-		<Logo classNames="dark:invert mr-[2px]" />
-		{publicConfig.PUBLIC_APP_NAME}
+		<Logo classNames="size-4 flex-none opacity-80 mix-blend-multiply dark:mix-blend-normal" />
+		<span class="lcars-label truncate text-[0.6875rem] font-bold"
+			>{publicConfig.PUBLIC_APP_NAME}</span
+		>
 	</a>
 	<a
 		href={`${base}/`}
 		onclick={handleNewChatClick}
-		class="flex rounded-lg border bg-white px-2 py-0.5 text-center whitespace-nowrap shadow-xs hover:shadow-none sm:text-smd dark:border-gray-600 dark:bg-gray-700"
+		class="lcars-btn h-10 flex-none bg-lcars-amber px-3.5 text-lcars-on-amber shadow-xs hover:shadow-none"
 		title="Ctrl/Cmd + Shift + O"
 	>
-		New Chat
+		+ New Chat
 	</a>
 </div>
 
 <div
-	class="scrollbar-custom flex touch-pan-y flex-col gap-1 overflow-y-auto rounded-r-xl border border-l-0 border-gray-100 from-gray-50 px-3 pt-2 pb-3 text-[.9rem] max-sm:bg-linear-to-t md:bg-linear-to-l dark:border-transparent dark:from-gray-800/30"
+	class="lcars-panel scrollbar-custom flex touch-pan-y flex-col gap-1 overflow-y-auto rounded-r-[22px] border-l-0 px-2.5 pt-2 pb-3 text-[.9rem]"
 >
-	<div class="flex flex-col gap-px">
+	<div class="flex flex-col gap-0.5">
 		{#each Object.entries(groupedConversations) as [group, convs]}
 			{#if convs.length}
-				<h4 class="mt-4 mb-1.5 pl-0.5 text-xs text-gray-400 first:mt-0 dark:text-gray-500">
+				<h4 class="lcars-label mt-4 mb-1.5 flex items-center gap-2 pl-1 text-lcars-dim first:mt-0">
+					<span class="lcars-cap-r h-[5px] w-3.5 flex-none bg-lcars-sky"></span>
 					{titles[group]}
 				</h4>
 				{#each convs as conv (String(conv.id))}
@@ -175,15 +176,13 @@
 	{/if}
 </div>
 <div
-	class="flex touch-none flex-col gap-px rounded-r-xl border border-l-0 border-gray-100 p-3 text-base sm:text-sm md:mt-3 md:bg-linear-to-l md:from-gray-50 dark:border-transparent md:dark:from-gray-800/30"
+	class="flex touch-none flex-col gap-0.5 rounded-r-[22px] border-l-0 px-2.5 py-2 text-base sm:text-sm"
 >
 	{#if user?.username || user?.email}
-		<div
-			class="group flex h-8 items-center gap-1.5 rounded-lg pr-2 pl-2 hover:bg-gray-100 first:hover:bg-transparent max-sm:h-10 dark:hover:bg-gray-700 dark:first:hover:bg-transparent"
-		>
+		<div class="group flex h-9 items-center gap-2 rounded-lg px-2 max-sm:h-10">
 			<img
 				src="https://huggingface.co/api/users/{user.username}/avatar?redirect=true"
-				class="size-3.5 rounded-full border bg-gray-500 dark:border-white/40"
+				class="size-5 rounded-[7px] border border-lcars-panel-edge bg-gray-500"
 				alt=""
 			/>
 			{#if publicConfig.isHuggingChat && user?.username}
@@ -191,11 +190,11 @@
 					href="https://huggingface.co/{user.username}"
 					target="_blank"
 					rel="noopener noreferrer"
-					class="min-w-0 truncate pr-2 text-gray-500 hover:underline dark:text-gray-400"
+					class="lcars-label min-w-0 truncate text-[0.625rem] text-lcars-muted hover:underline"
 					>{user.username}</a
 				>
 			{:else}
-				<span class="min-w-0 truncate pr-2 text-gray-500 dark:text-gray-400"
+				<span class="lcars-label min-w-0 truncate text-[0.625rem] text-lcars-muted"
 					>{user?.username || user?.email}</span
 				>
 			{/if}
@@ -205,15 +204,13 @@
 					href="https://huggingface.co/subscribe/pro?from=HuggingChat"
 					target="_blank"
 					rel="noopener noreferrer"
-					class="ml-auto flex h-[20px] shrink-0 items-center gap-1 px-1.5 py-0.5 text-xs text-gray-500 dark:text-gray-400"
+					class="lcars-chip ml-auto text-[0.5625rem] text-lcars-muted"
 				>
 					<IconPro />
 					Get PRO
 				</a>
 			{:else if publicConfig.isHuggingChat && $isPro === true}
-				<span
-					class="ml-auto flex h-[20px] shrink-0 items-center gap-1 px-1.5 py-0.5 text-xs text-gray-500 dark:text-gray-400"
-				>
+				<span class="lcars-chip ml-auto text-lcars-muted">
 					<IconPro />
 					PRO
 				</span>
@@ -222,46 +219,41 @@
 	{/if}
 	<a
 		href="{base}/models"
-		class="flex h-8 flex-none items-center gap-1.5 rounded-lg pr-2 pl-2 text-gray-500 hover:bg-gray-100 max-sm:h-10 dark:text-gray-400 dark:hover:bg-gray-700"
+		class="flex h-8 flex-none items-center gap-1.5 rounded-full px-2.5 text-lcars-muted hover:bg-lcars-panel hover:text-lcars-ink max-sm:h-10"
 		onclick={handleNavItemClick}
 	>
-		Models
-		<span
-			class="ml-auto rounded-md bg-gray-500/5 px-1.5 py-0.5 text-xs text-gray-400 dark:bg-gray-500/20 dark:text-gray-400"
-			>{nModels}</span
-		>
+		<span class="lcars-label text-[0.625rem]">Models</span>
+		<span class="lcars-chip ml-auto bg-lcars-sky/25 text-lcars-on-sky">{nModels}</span>
 	</a>
 
 	{#if user?.username || user?.email}
 		<button
 			onclick={() => (showMcpModal = true)}
-			class="flex h-8 flex-none items-center gap-1.5 rounded-lg pr-2 pl-2 text-gray-500 hover:bg-gray-100 max-sm:h-10 dark:text-gray-400 dark:hover:bg-gray-700"
+			class="flex h-8 flex-none items-center gap-1.5 rounded-full px-2.5 text-lcars-muted hover:bg-lcars-panel hover:text-lcars-ink max-sm:h-10"
 		>
-			MCP Servers
+			<span class="lcars-label text-[0.625rem]">MCP Servers</span>
 			{#if $enabledServersCount > 0}
-				<span
-					class="ml-auto rounded-md bg-blue-600/10 px-1.5 py-0.5 text-xs text-blue-600 dark:bg-blue-600/20 dark:text-blue-400"
-				>
+				<span class="lcars-chip ml-auto bg-lcars-sky/25 text-lcars-on-sky">
 					{$enabledServersCount}
 				</span>
 			{/if}
 		</button>
 	{/if}
 
-	<span class="flex gap-px">
+	<span class="flex gap-0.5">
 		<a
 			href="{base}/settings/application"
-			class="flex h-8 flex-none grow items-center gap-1.5 rounded-lg pr-2 pl-2 text-gray-500 hover:bg-gray-100 max-sm:h-10 dark:text-gray-400 dark:hover:bg-gray-700"
+			class="flex h-8 flex-none grow items-center gap-1.5 rounded-full px-2.5 text-lcars-muted hover:bg-lcars-panel hover:text-lcars-ink max-sm:h-10"
 			onclick={handleNavItemClick}
 		>
-			Settings
+			<span class="lcars-label text-[0.625rem]">Settings</span>
 		</a>
 		<button
 			onclick={() => {
 				switchTheme();
 			}}
 			aria-label="Toggle theme"
-			class="flex size-8 min-w-[1.5em] flex-none items-center justify-center rounded-lg p-2 text-gray-500 hover:bg-gray-100 max-sm:size-10 dark:text-gray-400 dark:hover:bg-gray-700"
+			class="flex size-8 min-w-[1.5em] flex-none items-center justify-center rounded-full p-2 text-lcars-muted hover:bg-lcars-panel hover:text-lcars-ink max-sm:size-10"
 		>
 			{#if browser}
 				{#if isDark}

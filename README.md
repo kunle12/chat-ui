@@ -118,8 +118,26 @@ PUBLIC_APP_DATA_SHARING=
 ```
 
 - `PUBLIC_APP_NAME` The name used as a title throughout the app.
-- `PUBLIC_APP_ASSETS` Is used to find logos & favicons in `static/$PUBLIC_APP_ASSETS`, current options are `chatui` and `huggingchat`.
+- `PUBLIC_APP_ASSETS` Is used to find logos & favicons in `static/$PUBLIC_APP_ASSETS`, current options are `chatui`, `huggingchat` and `origui`.
 - `PUBLIC_APP_DATA_SHARING` Can be set to 1 to add a toggle in the user settings that lets your users opt-in to data sharing with models creator.
+
+#### Colors, fonts and dark mode
+
+The UI uses the LCARS design language and renders **dark by default** (an unset theme
+preference resolves to dark; users can still pick Light / Dark / System in settings).
+
+- All design tokens live in `src/styles/main.css`: the LCARS accent palette
+  (`lcars-peach`, `lcars-amber`, `lcars-lilac`, `lcars-sky`, `lcars-marigold`,
+  `lcars-mauve`), theme-aware surface/text tokens (`lcars-paper`, `lcars-panel`,
+  `lcars-screen-1/2`, `lcars-ink`, `lcars-muted`, `lcars-dim`, `lcars-user-bubble`),
+  and the warm-neutral `gray-*` remap. Edit those values to re-skin the app.
+- Reusable LCARS shapes are available as `.lcars-*` classes (`.lcars-panel`,
+  `.lcars-screen`, `.lcars-cap-r`, `.lcars-btn`, `.lcars-chip`, `.lcars-label`,
+  `.lcars-display`, `.lcars-beacon`, …).
+- Fonts (Saira, Saira Extra Condensed, IBM Plex Mono) are self-hosted in
+  `src/styles/fonts/` and bundled with the app — no third-party font requests.
+- The browser `theme-color` and web app manifests are set to the dark LCARS paper
+  (`#0E0F12`).
 
 ### Models
 

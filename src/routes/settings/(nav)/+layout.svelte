@@ -118,7 +118,7 @@
 </script>
 
 <div
-	class="mx-auto grid h-full w-full max-w-[1400px] grid-cols-1 grid-rows-[auto_1fr] content-start gap-x-6 overflow-hidden p-4 text-gray-800 md:grid-cols-3 md:grid-rows-[auto_1fr] md:p-4 dark:text-gray-300"
+	class="mx-auto grid h-full w-full max-w-[1400px] grid-cols-1 grid-rows-[auto_1fr] content-start gap-x-6 overflow-hidden p-4 text-lcars-ink md:grid-cols-3 md:grid-rows-[auto_1fr] md:p-4"
 >
 	<div class="col-span-1 mb-3 flex items-center justify-between md:col-span-3 md:mb-4">
 		{#if showContent && browser}
@@ -138,31 +138,29 @@
 				/>
 			</button>
 		{/if}
-		<h2 class=" right-0 left-0 mx-auto w-fit text-center text-xl font-bold md:hidden">Settings</h2>
+		<h2
+			class="lcars-display right-0 left-0 mx-auto w-fit text-center text-2xl text-lcars-ink md:hidden"
+		>
+			Settings
+		</h2>
 		<button
-			class="btn rounded-lg"
+			class="btn rounded-full bg-lcars-panel p-1.5 ring-1 ring-lcars-panel-edge"
 			aria-label="Close settings"
 			onclick={() => {
 				goto(previousPage);
 			}}
 		>
-			<CarbonClose
-				class="text-xl text-gray-900 hover:text-black dark:text-gray-200 dark:hover:text-white"
-			/>
+			<CarbonClose class="text-xl text-lcars-muted hover:text-lcars-ink" />
 		</button>
 	</div>
 	{#if !(showContent && browser && !isDesktop(window))}
 		<div
-			class="col-span-1 scrollbar-custom flex flex-col overflow-y-auto rounded-r-xl bg-linear-to-l from-gray-50 to-10% whitespace-nowrap max-md:-mx-4 max-md:h-full md:pr-6 dark:from-gray-700/40"
+			class="lcars-panel col-span-1 scrollbar-custom flex flex-col overflow-y-auto rounded-r-[22px] border-l-0 whitespace-nowrap max-md:-mx-4 max-md:h-full md:pr-4"
 			class:max-md:hidden={showContent && browser}
 			bind:this={navContainer}
 		>
 			<!-- Section Headers -->
-			<h3
-				class="px-3 pt-2 pb-1 text-xs font-semibold text-gray-600 md:text-left dark:text-gray-400"
-			>
-				Models
-			</h3>
+			<h3 class="lcars-kicker px-3 pt-3 pb-1 text-lcars-dim md:text-left">Models</h3>
 
 			<!-- Filter input -->
 			<div class="px-2 py-2">
@@ -171,7 +169,7 @@
 					type="search"
 					placeholder="Search by name"
 					aria-label="Search models by name or id"
-					class="w-full rounded-full border border-gray-300 bg-white px-4 py-1 text-sm placeholder:text-gray-400 focus:ring-2 focus:ring-gray-300 focus:outline-hidden dark:border-gray-700 dark:bg-gray-800 dark:text-gray-200 dark:placeholder:text-gray-500 dark:focus:ring-gray-700"
+					class="w-full rounded-full border border-lcars-panel-edge bg-lcars-screen-1 px-4 py-1.5 text-sm text-lcars-ink placeholder:text-lcars-dim focus:ring-2 focus:ring-lcars-amber/40 focus:outline-hidden"
 				/>
 			</div>
 
@@ -185,18 +183,28 @@
 				.filter((el) => {
 					const haystack = normalize(`${el.id} ${el.name ?? ""} ${el.displayName ?? ""}`);
 					return queryTokens.every((q) => haystack.includes(q));
-				}) as model (model.id)}
+				}) as model, index (model.id)}
 				<button
 					type="button"
 					onclick={() => goto(`${base}/settings/${model.id}`)}
-					class="group flex h-9 w-full flex-none items-center gap-1 rounded-lg px-3 text-[13px] text-gray-600 hover:bg-gray-100 md:rounded-xl md:px-3 dark:text-gray-300 dark:hover:bg-gray-700/50 {model.id ===
+					class="group flex h-9 w-full flex-none items-center gap-1 rounded-r-[18px] pr-2 pl-0 text-[13px] text-lcars-muted hover:bg-lcars-peach/15 {model.id ===
 					page.params.model
-						? 'bg-gray-100! text-gray-800! dark:bg-gray-700! dark:text-gray-200!'
+						? 'bg-lcars-panel! text-lcars-ink!'
 						: ''}"
 					data-model-id={model.id}
 					aria-label="Configure {model.displayName}"
 				>
-					<div class="mr-auto flex items-center gap-1.5 truncate">
+					<span
+						class="lcars-cap-r h-5 w-[3px] flex-none {model.id === page.params.model
+							? 'bg-lcars-amber'
+							: [
+									'bg-lcars-peach/60',
+									'bg-lcars-sky/70',
+									'bg-lcars-lilac/70',
+									'bg-lcars-marigold/70',
+								][index % 4]}"
+					></span>
+					<div class="mr-auto flex items-center gap-1.5 truncate pl-1.5">
 						{#if model.isRouter}
 							<IconOmni classNames="size-3.5 flex-none" />
 						{:else if model.logoUrl}
@@ -291,10 +299,7 @@
 			<button
 				type="button"
 				onclick={() => goto(`${base}/settings/application`)}
-				class="group sticky bottom-0 mt-1 flex h-9 w-full flex-none items-center gap-1 rounded-lg px-3 text-[13px] text-gray-600 max-md:order-first md:rounded-xl md:px-3 dark:text-gray-300 {page
-					.url.pathname === `${base}/settings/application`
-					? 'bg-gray-100! text-gray-800! dark:bg-gray-700! dark:text-gray-200!'
-					: 'bg-white hover:bg-gray-100 dark:bg-gray-800 dark:hover:bg-gray-700'}"
+				class="lcars-btn sticky bottom-0 mt-2 mb-2 h-9 w-full flex-none gap-1.5 bg-lcars-amber text-[0.625rem] text-lcars-on-amber shadow-sm max-md:order-first"
 				aria-label="Configure application settings"
 			>
 				<IconGear class="mr-0.5 text-xxs" />

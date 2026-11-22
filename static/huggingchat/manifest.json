@@ -1,5 +1,6 @@
 {
-	"background_color": "#ffffff",
+	"background_color": "#0E0F12",
+	"theme_color": "#0E0F12",
 	"name": "HuggingChat",
 	"short_name": "HuggingChat",
 	"display": "standalone",

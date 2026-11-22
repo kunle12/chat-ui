@@ -213,6 +213,7 @@
 		{loading}
 		{currentModel}
 		models={data.models}
+		modelsReady={data.modelsReady}
 		bind:files
 		bind:draft
 	/>

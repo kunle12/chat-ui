@@ -49,7 +49,7 @@
 	tabindex={disabled ? -1 : 0}
 	onclick={toggle}
 	onkeydown={onKeydown}
-	class="relative inline-flex shrink-0 items-center rounded-full bg-gray-300 shadow-inner ring-gray-400 peer-checked:bg-blue-600 focus-visible:ring-3 focus-visible:ring-offset-1 dark:bg-gray-600 dark:ring-gray-700 {trackClasses} {disabled
+	class="relative inline-flex shrink-0 items-center rounded-full bg-gray-300 shadow-inner ring-gray-400 peer-checked:bg-lcars-amber focus-visible:ring-3 focus-visible:ring-lcars-amber/50 focus-visible:ring-offset-1 dark:bg-gray-600 dark:ring-gray-700 {trackClasses} {disabled
 		? 'cursor-not-allowed opacity-50'
 		: 'cursor-pointer hover:bg-gray-400 hover:peer-checked:bg-blue-600 dark:hover:bg-gray-500 dark:hover:peer-checked:bg-blue-600'}"
 >

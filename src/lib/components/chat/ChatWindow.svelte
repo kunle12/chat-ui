@@ -139,6 +139,8 @@
 		slackThreadUrl?: string;
 		currentModel: Model;
 		models: Model[];
+		/** Whether the model upstream has answered yet (drives the standby readout). */
+		modelsReady?: boolean;
 		preprompt?: string | undefined;
 		files?: File[];
 		dashboardViews?: TrackioDashboardView[];
@@ -162,6 +164,7 @@
 		slackThreadUrl,
 		currentModel,
 		models,
+		modelsReady = false,
 		preprompt = undefined,
 		files = $bindable([]),
 		dashboardViews = $bindable([]),
@@ -1294,34 +1297,55 @@
 	}}
 />
 
-<!-- pointer-events-none: the chat column sits at z-[-1]; this wrapper's
-     hit-area would otherwise swallow every click meant for it. Children
-     re-enable pointer events themselves. -->
-<div class="pointer-events-none relative flex min-h-0 min-w-0">
+<!-- The chat column is a plain flow child: the side pane carries z-10 and
+     overlays it when open. No negative z-index here — that would paint the
+     column behind the LCARS screen panel and swallow its pointer events. -->
+<div class="pointer-events-none relative flex h-full min-h-0 min-w-0">
 	<!-- --scrollbar-gutter: measured half-gutter of the scroll container, added
 	     to the composer overlay's padding so its text stays aligned with the
 	     message column on classic-scrollbar platforms. -->
 	<div
-		class="pointer-events-auto relative z-[-1] min-h-0 min-w-0 flex-1"
+		class="pointer-events-auto relative flex min-h-0 min-w-0 flex-1 flex-col"
 		style="--scrollbar-gutter: {chatScroll.gutterHalfPx}px"
 	>
 		{#if shareModalOpen}
 			<ShareConversationModal open={shareModalOpen} onclose={() => shareModal.close()} />
 		{/if}
-		{#if canShare}
-			<!-- Lives in the chat column (not the layout) so it stays visible when
-			     the artifact panel is open -->
-			<button
-				type="button"
-				class="hidden size-8 items-center justify-center gap-2 rounded-xl border border-gray-200 bg-white/90 text-sm font-medium text-gray-700 shadow-xs hover:bg-white/60 hover:text-gray-500 md:absolute md:top-5 md:right-6 md:z-10 md:flex dark:border-gray-700 dark:bg-gray-800/80 dark:text-gray-200 dark:hover:bg-gray-700
-					{loading ? 'cursor-not-allowed opacity-40' : ''}"
-				onclick={() => shareModal.open()}
-				aria-label="Share conversation"
-				disabled={loading}
+		<!-- LCARS panel header: conversation kicker, model capsule, stream readout. -->
+		<div class="relative z-[2] flex flex-none items-center gap-2.5 px-4 pt-3 pb-2.5 sm:px-5">
+			<span class="lcars-kicker min-w-0 truncate text-lcars-dim">
+				{page.params?.id
+					? `conversation · ${String(page.params.id).slice(-6)}`
+					: "new transmission"}
+			</span>
+			<span
+				class="lcars-label lcars-cap-r hidden bg-lcars-peach px-2.5 py-1 text-[0.625rem] font-bold text-lcars-on-peach sm:inline-flex"
+				title={currentModel.displayName}
 			>
-				<IconShare />
-			</button>
-		{/if}
+				<span class="max-w-40 truncate">{currentModel.displayName}</span>
+			</span>
+			<span
+				class="lcars-label ml-auto flex flex-none items-center gap-2 text-[0.5625rem] text-lcars-dim"
+			>
+				<span class="lcars-led" class:standby={!modelsReady}></span>
+				{loading ? "Streaming" : modelsReady ? "Ready" : "Standing by"}
+			</span>
+			{#if canShare}
+				<!-- Lives in the chat column (not the layout) so it stays visible when
+				     the artifact panel is open -->
+				<button
+					type="button"
+					class="flex size-7 flex-none items-center justify-center rounded-full bg-lcars-panel text-sm text-lcars-muted ring-1 ring-lcars-panel-edge hover:text-lcars-ink max-sm:hidden {loading
+						? 'cursor-not-allowed opacity-40'
+						: ''}"
+					onclick={() => shareModal.open()}
+					aria-label="Share conversation"
+					disabled={loading}
+				>
+					<IconShare />
+				</button>
+			{/if}
+		</div>
 		{#if featureAnnouncement && showFeatureAnnouncement && !mlSpotlightVisible}
 			<FeatureAnnouncementToast announcement={featureAnnouncement} />
 		{/if}
@@ -1331,7 +1355,7 @@
 		     focus draws a soft inset ring instead of the browser's default
 		     outline around the whole pane; mouse focus draws nothing. -->
 		<div
-			class="scrollbar-custom h-full [scrollbar-gutter:stable_both-edges] overflow-y-auto overscroll-contain focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-blue-500/60 dark:focus-visible:outline-blue-400/60"
+			class="scrollbar-custom min-h-0 flex-1 [scrollbar-gutter:stable_both-edges] overflow-y-auto overscroll-contain focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-lcars-amber/60"
 			tabindex="0"
 			aria-label="Conversation messages"
 			use:chatScroll.attach={{
@@ -1462,11 +1486,10 @@
 		     the scroller's scrollbar-gutter on classic-scrollbar platforms. -->
 		<div
 			bind:clientHeight={composerHeight}
-			class="pointer-events-none absolute inset-x-0 bottom-0 z-0 mx-auto flex w-full
-			max-w-3xl flex-col items-center justify-center bg-linear-to-t from-white
-			via-white to-white/0 px-[calc(0.875rem+var(--scrollbar-gutter,0px))] pt-2 *:pointer-events-auto
+			class="lcars-composer-fade pointer-events-none absolute inset-x-0 bottom-0 z-0 mx-auto flex w-full
+			max-w-3xl flex-col items-center justify-center px-[calc(0.875rem+var(--scrollbar-gutter,0px))] pt-2 *:pointer-events-auto
 			max-sm:py-0 sm:px-[calc(1.25rem+var(--scrollbar-gutter,0px))]
-			md:pb-4 xl:max-w-4xl dark:border-gray-800 dark:from-gray-900 dark:via-gray-900 dark:to-gray-900/0"
+			md:pb-4 xl:max-w-4xl"
 		>
 			{#if !draft.length && !messages.length && !sources.length && !loading && (mlModeOn || currentModel.isRouter || (modelSupportsTools && $allBaseServersEnabled)) && activeExamples.length && !hideRouterExamples && !lastIsError && $mcpServersLoaded}
 				<div
@@ -1598,10 +1621,9 @@
 							handleSubmit();
 						}}
 						class={{
-							"relative flex w-full max-w-4xl flex-1 flex-col rounded-xl border bg-gray-100 dark:bg-gray-800": true,
-							"transition-[border-color] duration-[350ms] ease-[ease]": ML_ASSISTANT_MODE,
-							"border-[#efc9ad] dark:border-[#5a3a22]": mlModeOn,
-							"dark:border-gray-700": !mlModeOn,
+							"lcars-panel relative flex w-full max-w-4xl flex-1 flex-col rounded-[22px]": true,
+							"transition-[border-color] duration-[350ms] ease-[ease] focus-within:ring-1 focus-within:ring-lcars-amber/40": true,
+							"border-lcars-marigold!": mlModeOn,
 							"opacity-30": isReadOnly,
 							"max-sm:mb-4": focused && isVirtualKeyboard(),
 						}}
@@ -1676,7 +1698,7 @@
 
 									{#if loading && queueing && draft.trim() && !draftIsSideQuestion}
 										<button
-											class="absolute right-11 bottom-2 btn size-8 self-end rounded-full border bg-black! text-white! shadow transition-none sm:right-10 sm:size-7 dark:border-transparent dark:bg-white! dark:text-black!"
+											class="lcars-btn absolute right-11 bottom-2 size-8 self-end bg-lcars-sky p-0 text-lcars-on-sky shadow-sm transition-none sm:right-10 sm:size-7"
 											type="submit"
 											aria-label="Queue message"
 											title="Queue: read at the next step"
@@ -1692,13 +1714,13 @@
 												onstop?.();
 											}}
 											showBorder={true}
-											classNames="absolute bottom-2 right-2 size-8 sm:size-7 self-end rounded-full border bg-white text-black shadow-sm transition-none dark:border-transparent dark:bg-gray-600 dark:text-white"
+											classNames="absolute bottom-2 right-2 flex size-8 items-center justify-center self-end rounded-full bg-lcars-panel text-lcars-ink shadow-sm ring-1 ring-lcars-panel-edge transition-none sm:size-7"
 										/>
 									{:else}
 										{#if transcriptionEnabled}
 											<button
 												type="button"
-												class="absolute right-10 bottom-2 mr-1.5 btn size-8 self-end rounded-full border bg-white/50 text-gray-500 transition-none hover:bg-gray-50 hover:text-gray-700 sm:right-9 sm:size-7 dark:border-transparent dark:bg-gray-600/50 dark:text-gray-300 dark:hover:bg-gray-500 dark:hover:text-white"
+												class="absolute right-10 bottom-2 mr-1.5 btn size-8 self-end rounded-full bg-lcars-panel/70 text-lcars-muted ring-1 ring-lcars-panel-edge transition-none hover:text-lcars-ink sm:right-9 sm:size-7"
 												disabled={isReadOnly}
 												onclick={() => {
 													isRecording = true;
@@ -1709,10 +1731,7 @@
 											</button>
 										{/if}
 										<button
-											class="absolute right-2 bottom-2 btn size-8 self-end rounded-full border bg-white text-black shadow transition-none enabled:hover:bg-white enabled:hover:shadow-inner sm:size-7 dark:border-transparent dark:bg-gray-600 dark:text-white dark:hover:enabled:bg-black {!draft ||
-											isReadOnly
-												? ''
-												: 'bg-black! text-white! dark:bg-white! dark:text-black!'}"
+											class="lcars-beacon absolute right-2 bottom-2 flex size-8 items-center justify-center self-end transition-transform enabled:hover:scale-105 disabled:opacity-40 disabled:grayscale sm:size-7"
 											disabled={!draft || isReadOnly}
 											type="submit"
 											aria-label="Send message"

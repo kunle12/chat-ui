@@ -300,6 +300,7 @@
 		loading={$loading}
 		{currentModel}
 		{models}
+		{modelsReady}
 		bind:files
 		bind:draft
 	/>

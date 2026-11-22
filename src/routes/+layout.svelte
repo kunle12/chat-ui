@@ -8,10 +8,11 @@
 	import { page } from "$app/state";
 
 	import { error } from "$lib/stores/errors";
+	import { loading } from "$lib/stores/loading";
 	import { createSettingsStore } from "$lib/stores/settings";
 	import { setHapticsEnabled } from "$lib/utils/haptics";
 	import { syncMcpSelection } from "$lib/stores/mcpSelectionSync";
-	import { initWithServers } from "$lib/stores/mcpServers";
+	import { enabledServersCount, initWithServers } from "$lib/stores/mcpServers";
 
 	import Toast from "$lib/components/Toast.svelte";
 	import NotificationToasts from "$lib/components/NotificationToasts.svelte";
@@ -281,9 +282,9 @@
 <NavigationLoadingBar />
 
 <div
-	class="fixed grid h-dvh w-screen grid-cols-1 grid-rows-[auto_1fr] overflow-hidden text-smd {!isNavCollapsed
+	class="fixed grid h-dvh w-screen grid-cols-1 grid-rows-[auto_1fr] overflow-hidden bg-lcars-paper text-smd text-lcars-ink {!isNavCollapsed
 		? 'md:grid-cols-[260px_1fr]'
-		: 'md:grid-cols-[0px_1fr]'} transition-[300ms] [transition-property:grid-template-columns] md:grid-rows-[1fr] dark:text-gray-300"
+		: 'md:grid-cols-[0px_1fr]'} transition-[300ms] [transition-property:grid-template-columns] md:grid-rows-[1fr] md:gap-x-2"
 >
 	<ExpandNavigation
 		isCollapsed={isNavCollapsed}
@@ -316,7 +317,49 @@
 	{/if}
 	<GenerationLiveWatcher />
 	<NotificationToasts />
-	{@render children?.()}
+	<!-- The LCARS "screen": the page content sits on the rounded display panel,
+	     inset from the paper like the design mockups. -->
+	<div class="relative flex min-h-0 min-w-0 flex-col max-md:p-2 md:py-2 md:pr-2">
+		<div class="lcars-screen min-h-0 flex-1 overflow-hidden rounded-[18px] md:rounded-[22px]">
+			{@render children?.()}
+		</div>
+		<!-- Bottom status strip. Real data, hidden below 860px like the mockups. -->
+		<div class="mt-2 hidden h-[38px] flex-none gap-2 min-[860px]:flex">
+			<div
+				class="lcars-cap-up flex flex-[2] items-center justify-center bg-lcars-lilac px-4 text-lcars-on-lilac"
+				title={data.modelsReady
+					? "The model upstream is answering"
+					: "The model upstream has not answered yet"}
+			>
+				<span class="lcars-label font-bold">
+					{data.modelsReady ? "Hull integrity nominal" : "Awaiting model server"}
+				</span>
+			</div>
+			<div
+				class="lcars-cap-up flex flex-1 items-center justify-center bg-lcars-sky px-4 text-lcars-on-sky"
+			>
+				<span class="lcars-label font-bold">
+					{$loading ? "Warp 1 · streaming" : "Impulse · ready"}
+				</span>
+			</div>
+			<div
+				class="lcars-cap-up flex flex-[1.4] items-center justify-center bg-lcars-peach px-4 text-lcars-on-peach"
+			>
+				<span class="lcars-label font-bold">
+					{data.models.filter((m) => !m.unlisted).length === 1
+						? "1 model online"
+						: `${data.models.filter((m) => !m.unlisted).length} models online`}
+				</span>
+			</div>
+			<div
+				class="lcars-cap-up flex flex-[0.55] items-center justify-center bg-lcars-amber px-3 text-lcars-on-amber"
+			>
+				<span class="lcars-label font-bold">
+					{$enabledServersCount > 0 ? `${$enabledServersCount} mcp` : "mcp off"}
+				</span>
+			</div>
+		</div>
+	</div>
 
 	{#if publicConfig.PUBLIC_PLAUSIBLE_SCRIPT_URL}
 		<script>

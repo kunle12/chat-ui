@@ -127,6 +127,35 @@ OPENAI_API_KEY=hf_***
 
 See `.env` for full list of variables including router config, MCP servers, auth, and feature flags.
 
+## UI Theme (LCARS)
+
+The app uses the LCARS design language and ships **dark by default**.
+
+- **Single source of truth**: `src/styles/main.css`. It defines the LCARS accent palette
+  (`lcars-peach/amber/lilac/sky/marigold/mauve` + `on-*` text colors), the theme-flipping
+  semantic tokens (`lcars-paper`, `lcars-panel`, `lcars-screen-1/2`, `lcars-ink`,
+  `lcars-muted`, `lcars-dim`, `lcars-user-bubble`, `lcars-accent-ink`), the warm-neutral
+  `gray-*` remap, and the `.lcars-*` component primitives.
+- **Use the primitives** rather than re-inventing capsules: `.lcars-panel`, `.lcars-screen`,
+  `.lcars-cap-r`, `.lcars-cap-up`, `.lcars-label` (mono uppercase meta), `.lcars-kicker`,
+  `.lcars-display` (Saira Extra Condensed titles), `.lcars-btn`, `.lcars-chip`,
+  `.lcars-led`, `.lcars-beacon`, `.lcars-composer-fade`.
+- **Fonts** are self-hosted in `src/styles/fonts/` (Saira, Saira Extra Condensed,
+  IBM Plex Mono) and bundled by Vite. Never add a font CDN link (the design forbids
+  third-party requests).
+- **Important utilities use a suffix** (`bg-red-500!`), matching Tailwind v4 and the
+  rest of the codebase. Plain utilities already override the `.lcars-*` component layer,
+  so prefer them without `!`.
+- **Dark default** lives in `src/app.html` (first paint) and `src/lib/switchTheme.ts`
+  (toggle + `<meta name="theme-color">`). Only an explicit `light` preference (or
+  `system` on a light OS) renders light.
+- **Real status data**: the app frame's bottom capsules and the chat header read
+  `modelsReady`, `$loading`, the model list and `$enabledServersCount` — keep them
+  wired to live state instead of decorative placeholders.
+- **Mobile**: the bottom status strip hides below 860px and the screen panel tightens to
+  18px radius / 10px insets, per the design mockups. Keep `prefers-reduced-motion`
+  handling for the beacon/LED animations.
+
 ## Code Conventions
 
 - TypeScript strict mode enabled
@@ -144,3 +173,4 @@ When building new features, consider:
 4. **Scrollbars**: Use `scrollbar-custom` class for styled scrollbars
 5. **Icons**: Custom icons in `$lib/components/icons/`, use Carbon (`~icons/carbon/*`) or Lucide (`~icons/lucide/*`) for standard icons
 6. **Provider avatars**: Use `PROVIDERS_HUB_ORGS` from `@huggingface/inference` for HF provider avatar URLs
+7. **Theming**: Build on the LCARS tokens/primitives above (`lcars-*`) and verify both dark (default) and light themes, plus the mobile layout

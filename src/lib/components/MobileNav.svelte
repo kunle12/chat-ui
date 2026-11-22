@@ -243,28 +243,27 @@
 	});
 </script>
 
-<nav
-	class="mx-4 mt-4 flex h-12 items-center justify-between rounded-b-xl border-b bg-gray-50 px-3 max-md:rounded-xl max-md:border md:hidden dark:border-gray-800 dark:bg-gray-800/30 dark:shadow-xl"
->
+<nav class="mx-3 mt-3 flex h-12 items-center justify-between gap-1.5 md:hidden">
 	<button
 		type="button"
-		class="-ml-3 flex size-12 shrink-0 items-center justify-center text-lg"
+		class="lcars-cap-r flex size-12 shrink-0 items-center justify-center bg-lcars-peach text-lg text-lcars-on-peach"
 		onclick={() => (isOpen = true)}
 		aria-label="Open menu"
 		bind:this={openEl}><IconBurger /></button
 	>
 	<div class="flex h-full items-center justify-center overflow-hidden">
 		{#if page.params?.id}
-			<span class="max-w-full truncate px-4 first-letter:uppercase" data-testid="chat-title"
-				>{title}</span
+			<span
+				class="lcars-label max-w-full truncate px-2 text-lcars-muted first-letter:uppercase"
+				data-testid="chat-title">{title}</span
 			>
 		{/if}
 	</div>
-	<div class="-mr-3 flex items-center">
+	<div class="-mr-1 flex items-center gap-1.5">
 		{#if isHuggingChat}
 			<button
 				type="button"
-				class="flex h-12 w-6 shrink-0 items-center justify-center text-lg"
+				class="flex size-10 shrink-0 items-center justify-center rounded-full bg-lcars-panel text-lcars-muted ring-1 ring-lcars-panel-edge"
 				disabled={!canShare}
 				onclick={() => {
 					if (!canShare) return;
@@ -277,12 +276,13 @@
 		{/if}
 		<a
 			href="{base}/"
-			class="flex size-12 shrink-0 items-center justify-center text-lg"
+			class="lcars-btn size-10 shrink-0 bg-lcars-amber px-0 text-lcars-on-amber"
 			onclick={(e) => {
 				if (requireAuthUser()) {
 					e.preventDefault();
 				}
 			}}
+			aria-label="New chat"
 		>
 			<IconNew />
 		</a>
@@ -306,7 +306,7 @@
 		: tween.current}%); width: {drawerWidthPercentage}%; will-change: transform;"
 	class:shadow-[5px_0_15px_0_rgba(0,0,0,0.3)]={isOpen || isDragging}
 	class="fixed top-0 bottom-0 left-0 z-30 grid max-h-dvh grid-cols-1
-	grid-rows-[auto_1fr_auto_auto] rounded-r-xl bg-white pt-4 md:hidden dark:bg-gray-900"
+	grid-rows-[auto_1fr_auto_auto] rounded-r-[22px] bg-lcars-panel pt-4 md:hidden"
 >
 	{#if hasOpenedDrawer}
 		{@render children?.()}

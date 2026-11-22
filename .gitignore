@@ -27,3 +27,4 @@ models/*
 /blob-report
 /playwright/.cache
 .probe-results/
+.playwright-mcp/
