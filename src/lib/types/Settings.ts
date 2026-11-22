@@ -94,7 +94,23 @@ export interface Settings extends Timestamps {
 
 	/** Enterprise resource-group id within billingOrganization. */
 	billingResourceGroup?: string;
+
+	/**
+	 * Selected UI theme id (THEMES.md §9.3). Well-formed but unknown ids are
+	 * coerced to the default on read and write — never a validation error,
+	 * which would block saving every other setting.
+	 */
+	uiTheme?: string;
+
+	/**
+	 * Light/dark/system preference, synced across devices (decision D8/D13).
+	 * Absent means "no explicit choice": the dark-first bootstrap behavior
+	 * applies, exactly as before themes existed.
+	 */
+	uiThemeMode?: UiThemeMode;
 }
+
+export type UiThemeMode = "light" | "dark" | "system";
 
 export type SettingsEditable = Omit<
 	Settings,

@@ -1,6 +1,6 @@
 import { browser } from "$app/environment";
 import { base } from "$app/paths";
-import type { ReasoningEffort, StreamingMode } from "$lib/types/Settings";
+import type { ReasoningEffort, StreamingMode, UiThemeMode } from "$lib/types/Settings";
 import { getContext, setContext } from "svelte";
 import { type Writable, writable, get } from "svelte/store";
 
@@ -25,6 +25,8 @@ type SettingsStore = {
 	hapticsEnabled: boolean;
 	billingOrganization?: string;
 	billingResourceGroup?: string;
+	uiTheme?: string;
+	uiThemeMode?: UiThemeMode;
 };
 
 type SettingsStoreWritable = Writable<SettingsStore> & {

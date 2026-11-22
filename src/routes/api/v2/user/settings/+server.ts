@@ -8,6 +8,7 @@ import { defaultModel, models, validateModel } from "$lib/server/models";
 import { DEFAULT_SETTINGS, type SettingsEditable } from "$lib/types/Settings";
 import { resolveStreamingMode } from "$lib/utils/messageUpdates";
 import { assertBillingTargetChange, parseSettingsPayload } from "$lib/server/settingsValidation";
+import { coerceThemeId as themeCoerce } from "$lib/themes/registry";
 
 export const GET: RequestHandler = async ({ locals }) => {
 	requireAuth(locals);
@@ -61,6 +62,10 @@ export const GET: RequestHandler = async ({ locals }) => {
 		reasoningOverrides: config.isHuggingChat ? {} : (settings?.reasoningOverrides ?? {}),
 		billingOrganization: settings?.billingOrganization ?? undefined,
 		billingResourceGroup: settings?.billingResourceGroup ?? undefined,
+		// Theme ids are coerced on read: a theme removed since the last save
+		// resolves to the default instead of poisoning the client.
+		uiTheme: settings?.uiTheme ? themeCoerce(settings.uiTheme) : undefined,
+		uiThemeMode: settings?.uiThemeMode,
 	});
 };
 

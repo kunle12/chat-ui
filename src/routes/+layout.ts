@@ -43,9 +43,24 @@ interface SettingsResponse {
 	reasoningOverrides: Record<string, boolean>;
 	billingOrganization?: string;
 	billingResourceGroup?: string;
+	uiTheme?: string;
+	uiThemeMode?: "light" | "dark" | "system";
 }
 
-export const load = async ({ fetch, url }) => {
+export interface ThemeMeta {
+	id: string;
+	name: string;
+	modes: Array<"light" | "dark">;
+	chrome: {
+		statusStrip: "full" | "compact" | "hidden";
+		chatHeader: "readout" | "minimal" | "hidden";
+		sidebar: "rail" | "plain";
+		structure?: "lcars" | "classic" | "office";
+	};
+	labels: Record<string, string>;
+}
+
+export const load = async ({ fetch, url, data }) => {
 	const client = useAPIClient({ fetch, origin: url.origin });
 
 	// Fetch the MCP base-server list alongside the other layout data.
@@ -121,5 +136,10 @@ export const load = async ({ fetch, url }) => {
 		publicConfig: getConfigManager(publicConfig as Record<`PUBLIC_${string}`, string>),
 		mcpBaseServers,
 		...featureFlags,
+		// Theme fields resolved server-side by +layout.server.ts (THEMES.md
+		// §9.2a): chrome/labels are rendered during SSR from these.
+		uiTheme: data.uiTheme,
+		uiThemeMode: data.uiThemeMode,
+		themeMeta: data.themeMeta as ThemeMeta,
 	};
 };

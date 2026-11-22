@@ -93,27 +93,27 @@ owner and recorded in §11 (D12–D14).
 with `localStorage` only; external-theme SSR includes its stylesheet; unknown ids coerce
 safely; legacy light-mode preference survives.
 
-- [ ] **P1-01** `src/lib/themes/registry.ts` + `themes.svelte.ts`: built-in registry
+- [x] **P1-01** `src/lib/themes/registry.ts` + `themes.svelte.ts`: built-in registry
       (isomorphic manifests), availability, active theme/mode, `apply()`, `setTheme()`,
       failure fallback.
-- [ ] **P1-02** `Settings.uiTheme` + `uiThemeMode` in `types/Settings.ts`, `DEFAULT_SETTINGS`,
+- [x] **P1-02** `Settings.uiTheme` + `uiThemeMode` in `types/Settings.ts`, `DEFAULT_SETTINGS`,
       `settingsValidation.ts`; unknown-id **coercion** (never a 400) on read and write.
-- [ ] **P1-03** Update both settings endpoints and the client store
+- [x] **P1-03** Update both settings endpoints and the client store
       (`${base}/settings`), `SettingsResponse` (`+layout.ts`), `SettingsStore`
       (`stores/settings.ts`).
-- [ ] **P1-04** New `+layout.server.ts`: resolve settings theme + external manifest metadata,
+- [x] **P1-04** New `+layout.server.ts`: resolve settings theme + external manifest metadata,
       write `ui-theme`/`ui-mode` cookies; `+layout.ts` merges `uiTheme`, `uiThemeMode`,
       `themeMeta` into data.
-- [ ] **P1-05** `+layout.svelte` renders chrome/labels from theme metadata during SSR.
-- [ ] **P1-06** `handle.ts`: add `%themeAttrs%` + `%themeAssets%` to `app.html`, replace both
+- [x] **P1-05** `+layout.svelte` renders chrome/labels from theme metadata during SSR.
+- [x] **P1-06** `handle.ts`: add `%themeAttrs%` + `%themeAssets%` to `app.html`, replace both
       in the single guarded replacer, validate cookie id against the registry
       (no attribute injection); `hooks.server.ts` `building` branch replaces both;
       build-time assertion for surviving `%…%` placeholders.
-- [ ] **P1-07** `app.html` pre-paint bootstrap: read `ui-theme`/`ui-mode`, migrate
+- [x] **P1-07** `app.html` pre-paint bootstrap: read `ui-theme`/`ui-mode`, migrate
       `localStorage.theme`, `%sveltekit.nonce%`; `PUBLIC_DEFAULT_THEME` fallback.
-- [ ] **P1-08** Settings → Appearance picker (gallery + previews, mode control, reset,
+- [x] **P1-08** Settings → Appearance picker (gallery + previews, mode control, reset,
       instant apply, optimistic update); `?theme=` deep link stripped like `?model=`.
-- [ ] **P1-09** Tests: id/mode resolution, coercion, cookie validation, SSR attribute parity,
+- [x] **P1-09** Tests: id/mode resolution, coercion, cookie validation, SSR attribute parity,
       legacy-key migration, static-build placeholder assertion.
 
 ---
@@ -304,6 +304,11 @@ see `CLAUDE.md`); use targeted files with capped workers.
 | 2026-11-22 | P0-04/P0-05 sweep | `grep -rnoP '(?<![\w-])lcars-(label\|kicker\|…)(?![\w-])' src --include='*.svelte'`                                   | ✅ 0 remaining standalone primitives; 78 `bg-lcars-*`-style color utilities untouched | Color utilities are P2-03 scope, not P0; regex boundaries verified (`bg-lcars-panel-edge` not renamed)                                                     |
 | 2026-11-22 | P0-07             | `THEME_BASELINE=1 npx playwright test tests/theme-baseline.spec.ts --project=chromium`                                | ✅ 4/4 tests, 12 PNGs in `tests/theme-baseline/`                                      | Home/conversation/settings × dark/light × 1440×900/390×844; visually verified (LCARS shell intact)                                                         |
 | 2026-11-22 | P0 reflection     | Self-review of `types.ts` grammar + rename regex                                                                      | 1 bug found and fixed                                                                 | `THEME_VERSION_REGEX` rejected `1.2.30` (`\d$` instead of `\d+$`); grammar spot-checks: `url()`, `expression()` rejected; named colors excluded per §6.2.1 |
+| 2026-11-22 | P1-09             | `npx vitest run --project=server src/lib/themes --no-file-parallelism --maxWorkers=1`                                 | ✅ 30/30                                                                              | Registry/coercion/labels/chrome, first-paint resolver vs inline-script parity (vm-sandboxed), token grammar                                                |
+| 2026-11-22 | P1 acceptance     | `npx playwright test tests/theme-runtime.spec.ts --project=chromium`                                                  | ✅ 4/4                                                                                | SSR cookie matrix incl. hostile-id safety; picker→localStorage+cookie+DB round-trip; legacy migration; deep-link coercion+strip                            |
+| 2026-11-22 | P1-06             | curl SSR matrix against the hermetic stack (cookies: hostile / unknown / light / system)                              | ✅ all degrade correctly                                                              | `<html lang="en" data-theme="lcars" class="dark">` default; no attribute injection possible                                                                |
+| 2026-11-22 | P1-06/P1-09       | `APP_BASE= ADAPTER=static npm run build` (with `.env.local` aside)                                                    | ✅ rc=0, 0 surviving placeholders in fallback                                         | Required removing the nonce attribute — see deviation D15                                                                                                  |
+| 2026-11-22 | P1 acceptance     | `npm run check` / `npm run lint` / `npm run check:theme-colors`                                                       | ✅ 0/0, clean, ratchet ok                                                             | Ratchet caught my own picker using raw utilities — restyled with lcars token utilities                                                                     |
 
 **Environment findings (not code defects, but they cost time — recorded for the next agent):**
 
@@ -322,6 +327,30 @@ see `CLAUDE.md`); use targeted files with capped workers.
    (`tests/fixtures.ts`, `tests/mock-openai.ts`, `tests/mock-mcp.ts`, then `node server.js`
    with the env from `playwright.config.ts`).
 
+**Deviation D15 (2026-11-22):** the pre-paint bootstrap script ships **without** a nonce
+attribute. THEMES.md §9.4 asks for the sveltekit nonce placeholder on inline scripts, but
+Kit refuses to generate adapter-static's SPA fallback when the page template contains that
+placeholder (`Cannot use prerendering if page template contains %sveltekit.nonce%` —
+verified twice). CSP today sets only `frame-ancestors`, so the inline script is safe;
+revisit (external script file or Kit fix) when a strict CSP lands.
+
+**Phase 1 self-review findings (all fixed in-commit):**
+
+- `resolveMode` contained `prefersDark ? "dark" : "dark"` — a `system` preference ignored
+  the OS. Unit tests now pin system resolution for both OS flavors.
+- `+layout.server.ts` misused `coerceThemeId(id, fallback)` — the second parameter is
+  extraThemes. Added an explicit `fallbackId` parameter to the registry API instead.
+- `resolveManifest` threw when the _configured fallback_ was not installed
+  (`PUBLIC_DEFAULT_THEME` naming a removed theme would 500 every page render). It now
+  degrades to the built-in default.
+- Runtime/DOM mode desync after hydration: the runtime seeded the server's best-effort
+  `dark` while the bootstrap had already corrected to light on a light-OS client —
+  `subscribeToTheme` consumers (WorkflowPane/TrackioPane) would have read the wrong mode.
+  Reconciliation now compares both the theme id and the dark class against the runtime
+  state.
+- The ratchet caught Phase 1's own new UI (the picker) using raw color utilities; restyled
+  with token-backed `lcars-*` utilities so the baseline stayed flat.
+
 ---
 
 ## 14. Session log
@@ -329,7 +358,8 @@ see `CLAUDE.md`); use targeted files with capped workers.
 | Date       | Agent/owner          | Summary                                                                          | Commits                            |
 | ---------- | -------------------- | -------------------------------------------------------------------------------- | ---------------------------------- |
 | 2026-11-22 | design agent         | Multi-theme design (`THEMES.md`), critical review, hardening, implementation log | `11854a99`, `f664e1cd`, `8ef4361d` |
-| 2026-11-22 | implementation agent | Phase 0 complete (contract, layering, hooks, ratchet, baseline); D7–D11 resolved | `948138d6`                         |
+| 2026-11-22 | implementation agent | Phase 0 complete (contract, layering, hooks, ratchet, baseline); D7–D11 resolved | `e3f48f74`                         |
+| 2026-11-22 | implementation agent | Phase 1 complete (runtime, SSR, persistence, picker); 5 self-review fixes; deviation D15 | `41503515` |
 
 ---
 

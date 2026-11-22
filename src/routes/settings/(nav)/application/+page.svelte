@@ -16,6 +16,8 @@
 	import { onMount } from "svelte";
 	import { browser } from "$app/environment";
 	import { getThemePreference, setTheme, type ThemePreference } from "$lib/switchTheme";
+	import { getActiveTheme, setTheme as setActiveTheme } from "$lib/themes/themes.svelte";
+	import { listBuiltinThemes } from "$lib/themes/registry";
 	import { supportsHaptics } from "$lib/utils/haptics";
 	import { ML_ASSISTANT_MODE } from "$lib/utils/mlAssistantFlag";
 
@@ -151,6 +153,28 @@
 
 	let themePref = $state<ThemePreference>(browser ? getThemePreference() : "system");
 
+	// Theme gallery state: the active id from the runtime, and per-theme
+	// swatch colors (picker-local until previews are generated in P6-04).
+	const themes = listBuiltinThemes();
+	const activeThemeId = $derived(getActiveTheme().id);
+	function themeSwatch(id: string): string[] {
+		switch (id) {
+			case "lcars":
+				return ["#F2ECE3", "#FF9933", "#CC99CC"];
+			case "classic":
+				return ["#FFFFFF", "#0A0A0A", "#2563EB"];
+			case "office":
+				return ["#FFFFFF", "#2B579A", "#F3F2F1"];
+			default:
+				return ["#8881", "#8883", "#8885"];
+		}
+	}
+	function selectTheme(id: string) {
+		// Runtime applies attributes + persists (localStorage, cookie, and the
+		// debounced account settings through the persist hook).
+		setActiveTheme(id, getActiveTheme().preference ?? "dark");
+	}
+
 	const taskModelId = $derived((page.data as { taskModelId?: string | null }).taskModelId ?? null);
 	const showTaskModelInBilling = $derived(publicConfig.isHuggingChat && !!page.data.user);
 </script>
@@ -269,7 +293,47 @@
 					</div>
 				{/if}
 
-				<!-- Theme selector -->
+				<!-- Theme gallery (THEMES.md §9.3, log task P1-08): instant apply,
+				     optimistic — the runtime persists through the settings store. -->
+				<div class="flex flex-col gap-2 py-3">
+					<div>
+						<div class="text-[13px] font-medium text-lcars-ink">Theme</div>
+						<p class="text-[12px] text-lcars-muted">
+							Pick a look; light/dark stays controllable below.
+						</p>
+					</div>
+					<div class="grid grid-cols-2 gap-2 sm:grid-cols-3">
+						{#each themes as theme (theme.id)}
+							<button
+								type="button"
+								class="flex items-center gap-2 rounded-xl border p-2 text-left transition-colors {activeThemeId ===
+								theme.id
+									? 'border-lcars-amber ring-1 ring-lcars-amber/40'
+									: 'border-lcars-panel-edge hover:border-lcars-muted'}"
+								onclick={() => selectTheme(theme.id)}
+								aria-pressed={activeThemeId === theme.id}
+							>
+								<span
+									class="flex h-8 w-8 flex-none overflow-hidden rounded-lg border border-lcars-panel-edge"
+								>
+									{#each themeSwatch(theme.id) as color, i (i)}
+										<span class="h-full flex-1" style:background={color}></span>
+									{/each}
+								</span>
+								<span class="min-w-0">
+									<span class="block truncate text-[13px] font-medium text-lcars-ink">
+										{theme.name}
+									</span>
+									<span class="block text-[11px] text-lcars-muted">
+										{theme.modes.join(" / ")}
+									</span>
+								</span>
+							</button>
+						{/each}
+					</div>
+				</div>
+
+				<!-- Mode selector (mode within the active theme, THEMES.md §6.3). -->
 				<div class="flex items-start justify-between py-3">
 					<div>
 						<div class="text-[13px] font-medium text-gray-800 dark:text-gray-200">Theme</div>

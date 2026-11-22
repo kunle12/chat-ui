@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="en">
+<html lang="en" %themeAttrs%>
 	<head>
 		<meta charset="utf-8" />
 		<meta
@@ -8,25 +8,17 @@
 		/>
 		<meta name="theme-color" content="#0E0F12" />
 		<script>
-			(function () {
-				try {
-					var prefersDark = window.matchMedia("(prefers-color-scheme: dark)").matches;
-					var stored = localStorage.getItem("theme");
-					// LCARS ships dark by default: only an explicit "light" (or a
-					// stored "system" preference on a light OS) renders light.
-					var isDark =
-						stored === "dark" || (stored === "system" ? prefersDark : stored !== "light");
-					if (isDark) {
-						document.documentElement.classList.add("dark");
-						document.querySelector('meta[name="theme-color"]').setAttribute("content", "#0E0F12");
-					} else {
-						document.querySelector('meta[name="theme-color"]').setAttribute("content", "#F2ECE3");
-					}
-				} catch (e) {}
-			})();
-
 			// For some reason, Sveltekit doesn't let us load env variables from .env here, so we load it from hooks.server.ts
 			window.gaId = "%gaId%";
+		</script>
+		<!-- %themeAssets%: SSR <link rel="stylesheet"> for an external active theme (Phase 5) -->
+		<!-- Pre-paint theme bootstrap; content injected from src/lib/themes/bootstrap.ts.
+		     Deliberately NO nonce attribute: the sveltekit nonce placeholder is
+		     incompatible with adapter-static's fallback generation (Kit refuses to
+		     prerender a template containing it). Revisit when CSP tightens
+		     (THEMES.md §9.4). -->
+		<script>
+			%themeBootstrapScript%
 		</script>
 		%sveltekit.head%
 	</head>
