@@ -145,10 +145,10 @@ Consequences (these are requirements, not advice):
 
 - A theme must **never** set, unlayered, a property that components also set with a
   utility. Doing so silently kills hover/dark/opacity variants: an unlayered
-  `.ui-panel { border: 0 }` would override the composer's `border-lcars-marigold!`, and
-  unlayered `.ui-msg-card` colors would fight `bg-lcars-panel/40` on the assistant card.
-  Utilities such as `bg-lcars-panel/95` on the conversation dropdown are _not_ on a
-  primitive at all, so a theme cannot target them without a hook.
+  `.ui-panel { border-radius: 0 }` beats a component's `rounded-*`, and an unlayered color
+  rule beats `hover:bg-*` / `dark:bg-*`. Utilities such as `bg-lcars-panel/95` on the
+  conversation dropdown are _not_ on a primitive at all, so a theme cannot target them
+  without a hook.
 - Any shape a target theme must change but that is currently an **arbitrary utility**
   (`rounded-[22px_22px_6px_22px]`, `rounded-[18px]`, `md:rounded-[22px]`, the composer
   overlay, the inner message column) needs a **primitive hook** (`.ui-bubble`,
