@@ -237,16 +237,22 @@ prefix check. User-theme uploads remain disabled (flag off).
 **Acceptance:** CI runs unit + wiring + contrast + no-flash + static-build checks; previews
 committed; docs updated and linked.
 
-- [ ] **P6-01** `themes.spec.ts`: schema, grammar, id/mode, completeness, coercion, labels.
-- [ ] **P6-02** Contrast test per theme × mode (WCAG 4.5 / 3) with a small sRGB helper.
-- [ ] **P6-03** Wiring test (every required token consumed).
-- [ ] **P6-04** Playwright matrix → screenshots + picker previews (`scripts/theme-previews.ts`,
-      capped workers).
-- [ ] **P6-05** No-flash test (JS on/off, external-theme SSR `<link>` present).
-- [ ] **P6-06** Ratchet in CI + static-build placeholder assertion.
-- [ ] **P6-07** Update `README.md`, `CLAUDE.md`, `CODEBASE_SUMMARY.md`, `THEMES.md`
+- [x] **P6-01** `themes.spec.ts`: schema, grammar, id/mode, completeness, coercion, labels.
+- [x] **P6-02** Contrast test per theme × mode (WCAG 4.5 / 3) with a small sRGB helper.
+- [x] **P6-03** Wiring test (every required token consumed).
+- [x] **P6-04** Playwright matrix → screenshots (baseline committed at `tests/theme-baseline/`;
+      picker preview webp generation deferred to a follow-up — the picker renders token
+      swatches instead of image previews, which is sufficient for three built-ins).
+- [x] **P6-05** No-flash test (JS on/off, external-theme SSR `<link>` present).
+- [x] **P6-06** Ratchet in CI + static-build placeholder assertion.
+- [x] **P6-07** Update `README.md`, `CLAUDE.md`, `CODEBASE_SUMMARY.md`, `THEMES.md`
       (status/decisions) and this log.
-- [ ] **P6-08** Final acceptance walk-through; mark Definition of Done.
+- [x] **P6-08** Final acceptance walk-through; mark Definition of Done.
+
+**Acceptance evidence:** 40/40 unit tests (34 prior + 6 contrast); 5/5 theme-runtime e2e;
+12-screenshot parity baseline; build:static passes with zero placeholders; ratchet ok
+(3055/484/212). CODEBASE_SUMMARY.md + THEMES.md status updated. Definition of Done: 7/8
+items met (picker preview webps deferred — see P6-04 note).
 
 ---
 
