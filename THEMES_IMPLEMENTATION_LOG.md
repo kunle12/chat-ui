@@ -400,15 +400,16 @@ revisit (external script file or Kit fix) when a strict CSP lands.
 
 ## 14. Session log
 
-| Date       | Agent/owner          | Summary                                                                                     | Commits                            |
-| ---------- | -------------------- | ------------------------------------------------------------------------------------------- | ---------------------------------- |
-| 2026-11-22 | design agent         | Multi-theme design (`THEMES.md`), critical review, hardening, implementation log            | `11854a99`, `f664e1cd`, `8ef4361d` |
-| 2026-11-22 | implementation agent | Phase 0 complete (contract, layering, hooks, ratchet, baseline); D7–D11 resolved            | `e3f48f74`                         |
-| 2026-11-22 | implementation agent | Phase 1 complete (runtime, SSR, persistence, picker); 5 self-review fixes; deviation D15    | `41503515`                         |
-| 2026-11-22 | implementation agent | Phase 2 complete (LCARS under the contract); 2 parity-driven bug fixes                      | (this commit)                      |
-| 2026-11-22 | implementation agent | Phase 3 complete (classic theme + structure branches); cookie-precedence reconciliation fix | `d0b91f01`                         |
-| 2026-11-22 | implementation agent | Phase 4 complete (office theme: fonts, document canvas, status bar, minimal header)         | (this commit)                      |
-| 2026-11-23 | implementation agent | Phase 5 complete (external plugin loader + css-tree validation)                             | (this commit)                      |
+| Date       | Agent/owner                                                   | Summary                                                                                     | Commits                            |
+| ---------- | ------------------------------------------------------------- | ------------------------------------------------------------------------------------------- | ---------------------------------- |
+| 2026-11-22 | design agent                                                  | Multi-theme design (`THEMES.md`), critical review, hardening, implementation log            | `11854a99`, `f664e1cd`, `8ef4361d` |
+| 2026-11-22 | implementation agent                                          | Phase 0 complete (contract, layering, hooks, ratchet, baseline); D7–D11 resolved            | `e3f48f74`                         |
+| 2026-11-22 | implementation agent                                          | Phase 1 complete (runtime, SSR, persistence, picker); 5 self-review fixes; deviation D15    | `41503515`                         |
+| 2026-11-22 | implementation agent                                          | Phase 2 complete (LCARS under the contract); 2 parity-driven bug fixes                      | (this commit)                      |
+| 2026-11-22 | implementation agent                                          | Phase 3 complete (classic theme + structure branches); cookie-precedence reconciliation fix | `d0b91f01`                         |
+| 2026-11-22 | implementation agent                                          | Phase 4 complete (office theme: fonts, document canvas, status bar, minimal header)         | `df63ec5d`                         |
+| 2026-11-23 | implementation agent                                          | Phase 5 complete (external plugin loader + css-tree validation)                             | `78ba1157`                         |
+| 2026-11-23 | adversarial reviewer (DeepSeek V4.1 Flash 1017, official API) | Full review: 2C / 4M / 16m / 2NV; fixes verified and committed                              | `47d255f3`                         |
 
 ---
 
