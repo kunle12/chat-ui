@@ -1,0 +1,15 @@
+{
+	"apiVersion": 1,
+	"id": "classic",
+	"name": "Classic",
+	"version": "1.0.0",
+	"description": "The original chat-ui look: stock neutrals, plain panels, no chrome.",
+	"modes": ["light", "dark"],
+	"chrome": {
+		"statusStrip": "hidden",
+		"chatHeader": "hidden",
+		"sidebar": "plain",
+		"structure": "classic"
+	},
+	"css": "theme.css"
+}

@@ -1,0 +1,16 @@
+{
+	"apiVersion": 1,
+	"id": "office",
+	"name": "Office",
+	"version": "1.0.0",
+	"description": "Document-style productivity look: white pages, blue accents, flat chrome.",
+	"modes": ["light", "dark"],
+	"chrome": {
+		"statusStrip": "full",
+		"chatHeader": "minimal",
+		"sidebar": "plain",
+		"structure": "office"
+	},
+	"fonts": ["selawk.woff2", "selawkb.woff2", "carlito-regular.woff2", "carlito-bold.woff2"],
+	"css": "theme.css"
+}

@@ -118,7 +118,7 @@
 </script>
 
 <div
-	class="mx-auto grid h-full w-full max-w-[1400px] grid-cols-1 grid-rows-[auto_1fr] content-start gap-x-6 overflow-hidden p-4 text-lcars-ink md:grid-cols-3 md:grid-rows-[auto_1fr] md:p-4"
+	class="mx-auto grid h-full w-full max-w-[1400px] grid-cols-1 grid-rows-[auto_1fr] content-start gap-x-6 overflow-hidden p-4 text-ui-ink md:grid-cols-3 md:grid-rows-[auto_1fr] md:p-4"
 >
 	<div class="col-span-1 mb-3 flex items-center justify-between md:col-span-3 md:mb-4">
 		{#if showContent && browser}
@@ -138,29 +138,27 @@
 				/>
 			</button>
 		{/if}
-		<h2
-			class="lcars-display right-0 left-0 mx-auto w-fit text-center text-2xl text-lcars-ink md:hidden"
-		>
+		<h2 class="ui-display right-0 left-0 mx-auto w-fit text-center text-2xl text-ui-ink md:hidden">
 			Settings
 		</h2>
 		<button
-			class="btn rounded-full bg-lcars-panel p-1.5 ring-1 ring-lcars-panel-edge"
+			class="btn rounded-full bg-ui-panel p-1.5 ring-1 ring-ui-panel-edge"
 			aria-label="Close settings"
 			onclick={() => {
 				goto(previousPage);
 			}}
 		>
-			<CarbonClose class="text-xl text-lcars-muted hover:text-lcars-ink" />
+			<CarbonClose class="text-xl text-ui-muted hover:text-ui-ink" />
 		</button>
 	</div>
 	{#if !(showContent && browser && !isDesktop(window))}
 		<div
-			class="lcars-panel col-span-1 scrollbar-custom flex flex-col overflow-y-auto rounded-r-[22px] border-l-0 whitespace-nowrap max-md:-mx-4 max-md:h-full md:pr-4"
+			class="ui-panel col-span-1 scrollbar-custom flex flex-col overflow-y-auto rounded-r-[22px] border-l-0 whitespace-nowrap max-md:-mx-4 max-md:h-full md:pr-4"
 			class:max-md:hidden={showContent && browser}
 			bind:this={navContainer}
 		>
 			<!-- Section Headers -->
-			<h3 class="lcars-kicker px-3 pt-3 pb-1 text-lcars-dim md:text-left">Models</h3>
+			<h3 class="ui-kicker px-3 pt-3 pb-1 text-ui-dim md:text-left">Models</h3>
 
 			<!-- Filter input -->
 			<div class="px-2 py-2">
@@ -169,7 +167,7 @@
 					type="search"
 					placeholder="Search by name"
 					aria-label="Search models by name or id"
-					class="w-full rounded-full border border-lcars-panel-edge bg-lcars-screen-1 px-4 py-1.5 text-sm text-lcars-ink placeholder:text-lcars-dim focus:ring-2 focus:ring-lcars-amber/40 focus:outline-hidden"
+					class="w-full rounded-full border border-ui-panel-edge bg-ui-screen-1 px-4 py-1.5 text-sm text-ui-ink placeholder:text-ui-dim focus:ring-2 focus:ring-ui-amber/40 focus:outline-hidden"
 				/>
 			</div>
 
@@ -187,22 +185,19 @@
 				<button
 					type="button"
 					onclick={() => goto(`${base}/settings/${model.id}`)}
-					class="group flex h-9 w-full flex-none items-center gap-1 rounded-r-[18px] pr-2 pl-0 text-[13px] text-lcars-muted hover:bg-lcars-peach/15 {model.id ===
+					class="group flex h-9 w-full flex-none items-center gap-1 rounded-r-[18px] pr-2 pl-0 text-[13px] text-ui-muted hover:bg-ui-peach/15 {model.id ===
 					page.params.model
-						? 'bg-lcars-panel! text-lcars-ink!'
+						? 'bg-ui-panel! text-ui-ink!'
 						: ''}"
 					data-model-id={model.id}
 					aria-label="Configure {model.displayName}"
 				>
 					<span
-						class="lcars-cap-r h-5 w-[3px] flex-none {model.id === page.params.model
-							? 'bg-lcars-amber'
-							: [
-									'bg-lcars-peach/60',
-									'bg-lcars-sky/70',
-									'bg-lcars-lilac/70',
-									'bg-lcars-marigold/70',
-								][index % 4]}"
+						class="ui-cap-r h-5 w-[3px] flex-none {model.id === page.params.model
+							? 'bg-ui-amber'
+							: ['bg-ui-peach/60', 'bg-ui-sky/70', 'bg-ui-lilac/70', 'bg-ui-marigold/70'][
+									index % 4
+								]}"
 					></span>
 					<div class="mr-auto flex items-center gap-1.5 truncate pl-1.5">
 						{#if model.isRouter}
@@ -299,7 +294,7 @@
 			<button
 				type="button"
 				onclick={() => goto(`${base}/settings/application`)}
-				class="lcars-btn sticky bottom-0 mt-2 mb-2 h-9 w-full flex-none gap-1.5 bg-lcars-amber text-[0.625rem] text-lcars-on-amber shadow-sm max-md:order-first"
+				class="ui-btn sticky bottom-0 mt-2 mb-2 h-9 w-full flex-none gap-1.5 bg-ui-amber text-[0.625rem] text-ui-on-amber shadow-sm max-md:order-first"
 				aria-label="Configure application settings"
 			>
 				<IconGear class="mr-0.5 text-xxs" />

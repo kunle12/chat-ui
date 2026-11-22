@@ -2,8 +2,10 @@
 	import Logo from "$lib/components/icons/Logo.svelte";
 	import type { Model } from "$lib/types/Model";
 	import { usePublicConfig } from "$lib/utils/PublicConfig.svelte";
+	import { getActiveTheme } from "$lib/themes/themes.svelte";
 
 	const publicConfig = usePublicConfig();
+	const structure = $derived(getActiveTheme().manifest.chrome.structure);
 
 	interface Props {
 		currentModel: Model;
@@ -25,10 +27,15 @@
 >
 	<div class="flex flex-col items-center justify-center gap-3 select-none">
 		<Logo classNames="size-[3.25rem] dark:invert md:size-[4.75rem]" />
-		<div class="lcars-display text-[1.6rem] text-lcars-ink md:text-[2.55rem]">
+		<div class="ui-display text-[1.6rem] text-ui-ink md:text-[2.55rem]">
 			{publicConfig.PUBLIC_APP_NAME}
 		</div>
-		<div class="lcars-kicker text-lcars-dim">All systems nominal · ready for input</div>
+		<div class="ui-kicker text-ui-dim">
+			{structure === "classic"
+				? "Ready when you are"
+				: (getActiveTheme().manifest.labels.introTagline ??
+					"All systems nominal · ready for input")}
+		</div>
 	</div>
 	{@render children?.()}
 	<!-- <div class="lg:col-span-1">

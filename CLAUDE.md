@@ -156,6 +156,18 @@ The app uses the LCARS design language and ships **dark by default**.
   18px radius / 10px insets, per the design mockups. Keep `prefers-reduced-motion`
   handling for the beacon/LED animations.
 
+Multi-theme support (user-selectable themes + portable theme plugins) is designed in
+[`THEMES.md`](./THEMES.md). When touching UI, keep it theme-agnostic: prefer the
+`--ui-*` tokens and `.ui-*` primitives over new hard-coded colors.
+
+Implementation progress and per-phase checklists are tracked in
+[`THEMES_IMPLEMENTATION_LOG.md`](./THEMES_IMPLEMENTATION_LOG.md). Follow its agent protocol and
+update the log in the same commit as the work. If you are working on UI, **read that log
+first**: it says which phase is active, which hooks (`.ui-bubble`, `.ui-page`, `.ui-composer`,
+…) exist, and which verification (ratchet via `npm run check:theme-colors`, screenshot
+baselines in `tests/theme-baseline/`) your change must pass. Raw color utilities are
+ratcheted — new `bg-gray-*`/`text-blue-*`/`bg-[#…]` utilities fail CI; use semantic tokens.
+
 ## Code Conventions
 
 - TypeScript strict mode enabled

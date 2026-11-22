@@ -246,7 +246,7 @@
 <nav class="mx-3 mt-3 flex h-12 items-center justify-between gap-1.5 md:hidden">
 	<button
 		type="button"
-		class="lcars-cap-r flex size-12 shrink-0 items-center justify-center bg-lcars-peach text-lg text-lcars-on-peach"
+		class="ui-cap-r flex size-12 shrink-0 items-center justify-center bg-ui-peach text-lg text-ui-on-peach"
 		onclick={() => (isOpen = true)}
 		aria-label="Open menu"
 		bind:this={openEl}><IconBurger /></button
@@ -254,7 +254,7 @@
 	<div class="flex h-full items-center justify-center overflow-hidden">
 		{#if page.params?.id}
 			<span
-				class="lcars-label max-w-full truncate px-2 text-lcars-muted first-letter:uppercase"
+				class="ui-label max-w-full truncate px-2 text-ui-muted first-letter:uppercase"
 				data-testid="chat-title">{title}</span
 			>
 		{/if}
@@ -263,7 +263,7 @@
 		{#if isHuggingChat}
 			<button
 				type="button"
-				class="flex size-10 shrink-0 items-center justify-center rounded-full bg-lcars-panel text-lcars-muted ring-1 ring-lcars-panel-edge"
+				class="flex size-10 shrink-0 items-center justify-center rounded-full bg-ui-panel text-ui-muted ring-1 ring-ui-panel-edge"
 				disabled={!canShare}
 				onclick={() => {
 					if (!canShare) return;
@@ -276,7 +276,7 @@
 		{/if}
 		<a
 			href="{base}/"
-			class="lcars-btn size-10 shrink-0 bg-lcars-amber px-0 text-lcars-on-amber"
+			class="ui-btn size-10 shrink-0 bg-ui-amber px-0 text-ui-on-amber"
 			onclick={(e) => {
 				if (requireAuthUser()) {
 					e.preventDefault();
@@ -306,7 +306,7 @@
 		: tween.current}%); width: {drawerWidthPercentage}%; will-change: transform;"
 	class:shadow-[5px_0_15px_0_rgba(0,0,0,0.3)]={isOpen || isDragging}
 	class="fixed top-0 bottom-0 left-0 z-30 grid max-h-dvh grid-cols-1
-	grid-rows-[auto_1fr_auto_auto] rounded-r-[22px] bg-lcars-panel pt-4 md:hidden"
+	grid-rows-[auto_1fr_auto_auto] rounded-r-[22px] bg-ui-panel pt-4 md:hidden"
 >
 	{#if hasOpenedDrawer}
 		{@render children?.()}

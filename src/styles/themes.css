@@ -1,0 +1,9 @@
+/*
+ * Built-in theme CSS, imported by +layout.svelte right after main.css
+ * (THEMES.md §13). Fixed order: the default theme first. Token blocks inside
+ * each theme file are unlayered and scoped to :root[data-theme="<id>"];
+ * structural overrides live in @layer components (§5.1).
+ */
+@import "../lib/themes/lcars/theme.css";
+@import "../lib/themes/classic/theme.css";
+@import "../lib/themes/office/theme.css";

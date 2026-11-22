@@ -28,6 +28,14 @@
 	import { isPro } from "$lib/stores/isPro";
 	import { requireAuthUser } from "$lib/utils/auth";
 	import { createConversationsStore } from "$lib/stores/conversations.svelte";
+	import {
+		initThemeRuntime,
+		reconcileFromServer,
+		setTheme,
+		getActiveTheme,
+	} from "$lib/themes/themes.svelte";
+	import { resolveManifest, resolveChrome, resolveLabel } from "$lib/themes/registry";
+	import type { ThemeModePreference } from "$lib/themes/types";
 	import { createActiveGenerationsStore } from "$lib/stores/activeGenerations.svelte";
 	import { createNotificationsStore } from "$lib/stores/notifications.svelte";
 
@@ -138,6 +146,89 @@
 
 	const settings = createSettingsStore(data.settings);
 
+	// Theme runtime (THEMES.md §9): seeded from the SSR-resolved values so the
+	// runtime state matches the server-rendered chrome from the first frame.
+	// Theme changes made through the runtime (picker, sidebar toggle, deep
+	// link) flow back into the debounced settings save via `persist`.
+	initThemeRuntime({
+		id: data.uiTheme,
+		preference: data.uiThemeMode,
+		mode: data.uiThemeMode === "light" ? "light" : "dark",
+		manifest: resolveManifest(data.uiTheme),
+		externalThemes: data.externalThemes,
+		persist: (id, preference) => {
+			void settings.set({ uiTheme: id, uiThemeMode: preference });
+		},
+	});
+
+	// Reconciliation (THEMES.md §9.2b): the server rendered its best effort —
+	// it cannot see `prefers-color-scheme`, and a brand-new device has no
+	// ui-theme cookie yet.
+	//
+	// - Account theme (source === "account"): the account wins. If the DOM
+	//   disagrees (theme id or resolved mode), re-apply after hydration — the
+	//   documented one-frame correction. Skip persistence: the account already
+	//   holds these values.
+	// - No account theme: the pre-paint bootstrap already resolved
+	//   localStorage (including the migrated legacy key) — hydration must NOT
+	//   override it. Adopt the stored preference into the runtime state so
+	//   subscribers (iframe panes, toggle icon) see the applied mode.
+	if (browser) {
+		const html = document.documentElement;
+		if (data.uiThemeSource === "account") {
+			const domDark = html.classList.contains("dark");
+			const modeMismatch =
+				data.uiThemeMode !== undefined && domDark !== (getActiveTheme().mode === "dark");
+			if (html.dataset.theme !== data.uiTheme || modeMismatch) {
+				reconcileFromServer(data.uiTheme, data.uiThemeMode);
+			}
+		} else {
+			// Anonymous: adopt the preference the pre-paint bootstrap resolved —
+			// same precedence (cookie → localStorage → legacy), so hydration
+			// never contradicts the first paint.
+			const cookieMode = document.cookie
+				.split("; ")
+				.find((c) => c.startsWith("ui-mode="))
+				?.slice("ui-mode=".length);
+			const valid = (v: string | undefined): ThemeModePreference | undefined =>
+				v === "light" || v === "dark" || v === "system" ? v : undefined;
+			const storedTheme = localStorage.getItem("ui-theme");
+			const preference =
+				valid(cookieMode) ??
+				valid(localStorage.getItem("ui-mode") ?? undefined) ??
+				valid(localStorage.getItem("theme") ?? undefined);
+			if (storedTheme || preference) {
+				reconcileFromServer(storedTheme ?? data.uiTheme, preference);
+			}
+		}
+	}
+
+	// Chrome/labels/structure derive from the RUNTIME manifest, so a theme
+	// switch via setTheme() is coherent without a reload (finding M2). The
+	// SSR themeMeta only seeds the pre-hydration frame.
+	const themeMeta = $derived.by(() => {
+		const m = getActiveTheme().manifest;
+		const chrome = resolveChrome(m);
+		const fallback = data.themeMeta.labels;
+		return {
+			id: m.id,
+			name: m.name,
+			modes: m.modes,
+			chrome,
+			labels: {
+				modelsReady: m.labels.modelsReady ?? fallback.modelsReady,
+				modelsWaiting: m.labels.modelsWaiting ?? fallback.modelsWaiting,
+				streaming: m.labels.streaming ?? fallback.streaming,
+				idle: m.labels.idle ?? fallback.idle,
+				models: m.labels.models ?? fallback.models,
+				modelsOne: m.labels.modelsOne ?? fallback.modelsOne,
+				mcp: m.labels.mcp ?? fallback.mcp,
+				mcpOff: m.labels.mcpOff ?? fallback.mcpOff,
+				introTagline: m.labels.introTagline ?? fallback.introTagline,
+			},
+		};
+	});
+
 	const slackMcpSync = $derived(Boolean(data.slackMcpSync));
 	$effect(() => {
 		// `saved` is read once: a refreshed flag must not restart sync and drop a pending write
@@ -184,6 +275,18 @@
 						invalidateAll: true,
 					});
 				});
+		}
+
+		// ?theme=<id> deep link (THEMES.md §9.3): apply + persist like ?model=,
+		// then strip the parameter in place (any route). Unknown ids are
+		// coerced by the runtime.
+		if (page.url.searchParams.has("theme")) {
+			const requested = page.url.searchParams.get("theme");
+			setTheme(requested ?? "lcars", getActiveTheme().preference ?? "dark");
+			const query = new URLSearchParams(page.url.searchParams.toString());
+			query.delete("theme");
+			const qs = query.toString();
+			await goto(`${page.url.pathname}${qs ? `?${qs}` : ""}`, { invalidateAll: true });
 		}
 
 		if (page.url.searchParams.has("token")) {
@@ -282,7 +385,7 @@
 <NavigationLoadingBar />
 
 <div
-	class="fixed grid h-dvh w-screen grid-cols-1 grid-rows-[auto_1fr] overflow-hidden bg-lcars-paper text-smd text-lcars-ink {!isNavCollapsed
+	class="fixed grid h-dvh w-screen grid-cols-1 grid-rows-[auto_1fr] overflow-hidden bg-ui-paper text-smd text-ui-ink {!isNavCollapsed
 		? 'md:grid-cols-[260px_1fr]'
 		: 'md:grid-cols-[0px_1fr]'} transition-[300ms] [transition-property:grid-template-columns] md:grid-rows-[1fr] md:gap-x-2"
 >
@@ -318,47 +421,66 @@
 	<GenerationLiveWatcher />
 	<NotificationToasts />
 	<!-- The LCARS "screen": the page content sits on the rounded display panel,
-	     inset from the paper like the design mockups. -->
+	     inset from the paper like the design mockups. Themes with
+	     structure !== "lcars" render children directly on the page (classic
+	     looks like the pre-LCARS layout; office wraps its own document page). -->
 	<div class="relative flex min-h-0 min-w-0 flex-col max-md:p-2 md:py-2 md:pr-2">
-		<div class="lcars-screen min-h-0 flex-1 overflow-hidden rounded-[18px] md:rounded-[22px]">
-			{@render children?.()}
-		</div>
-		<!-- Bottom status strip. Real data, hidden below 860px like the mockups. -->
-		<div class="mt-2 hidden h-[38px] flex-none gap-2 min-[860px]:flex">
+		{#if themeMeta.chrome.structure === "lcars"}
 			<div
-				class="lcars-cap-up flex flex-[2] items-center justify-center bg-lcars-lilac px-4 text-lcars-on-lilac"
-				title={data.modelsReady
-					? "The model upstream is answering"
-					: "The model upstream has not answered yet"}
+				class="ui-screen min-h-0 flex-1 overflow-hidden rounded-[18px] md:rounded-(--ui-radius-xl)"
 			>
-				<span class="lcars-label font-bold">
-					{data.modelsReady ? "Hull integrity nominal" : "Awaiting model server"}
-				</span>
+				{@render children?.()}
 			</div>
-			<div
-				class="lcars-cap-up flex flex-1 items-center justify-center bg-lcars-sky px-4 text-lcars-on-sky"
-			>
-				<span class="lcars-label font-bold">
-					{$loading ? "Warp 1 · streaming" : "Impulse · ready"}
-				</span>
+		{:else}
+			<div class="ui-screen min-h-0 flex-1 overflow-hidden">
+				{@render children?.()}
 			</div>
-			<div
-				class="lcars-cap-up flex flex-[1.4] items-center justify-center bg-lcars-peach px-4 text-lcars-on-peach"
-			>
-				<span class="lcars-label font-bold">
-					{data.models.filter((m) => !m.unlisted).length === 1
-						? "1 model online"
-						: `${data.models.filter((m) => !m.unlisted).length} models online`}
-				</span>
+		{/if}
+		<!-- Bottom status strip. Real data, hidden below 860px like the mockups.
+		     Visibility and copy come from the active theme's chrome/labels
+		     (THEMES.md §7); LCARS keeps both at their original values. -->
+		{#if themeMeta.chrome.statusStrip !== "hidden"}
+			<div class="mt-2 hidden h-[38px] flex-none gap-2 min-[860px]:flex">
+				<div
+					class="ui-cap-up flex flex-[2] items-center justify-center bg-ui-lilac px-4 text-ui-on-lilac"
+					title={data.modelsReady
+						? "The model upstream is answering"
+						: "The model upstream has not answered yet"}
+				>
+					<span class="ui-label font-bold">
+						{data.modelsReady ? themeMeta.labels.modelsReady : themeMeta.labels.modelsWaiting}
+					</span>
+				</div>
+				<div
+					class="ui-cap-up flex flex-1 items-center justify-center bg-ui-sky px-4 text-ui-on-sky"
+				>
+					<span class="ui-label font-bold">
+						{$loading ? themeMeta.labels.streaming : themeMeta.labels.idle}
+					</span>
+				</div>
+				<div
+					class="ui-cap-up flex flex-[1.4] items-center justify-center bg-ui-peach px-4 text-ui-on-peach"
+				>
+					<span class="ui-label font-bold">
+						{data.models.filter((m) => !m.unlisted).length === 1
+							? themeMeta.labels.modelsOne
+							: themeMeta.labels.models.replace(
+									"{count}",
+									String(data.models.filter((m) => !m.unlisted).length)
+								)}
+					</span>
+				</div>
+				<div
+					class="ui-cap-up flex flex-[0.55] items-center justify-center bg-ui-amber px-3 text-ui-on-amber"
+				>
+					<span class="ui-label font-bold">
+						{$enabledServersCount > 0
+							? themeMeta.labels.mcp.replace("{count}", String($enabledServersCount))
+							: themeMeta.labels.mcpOff}
+					</span>
+				</div>
 			</div>
-			<div
-				class="lcars-cap-up flex flex-[0.55] items-center justify-center bg-lcars-amber px-3 text-lcars-on-amber"
-			>
-				<span class="lcars-label font-bold">
-					{$enabledServersCount > 0 ? `${$enabledServersCount} mcp` : "mcp off"}
-				</span>
-			</div>
-		</div>
+		{/if}
 	</div>
 
 	{#if publicConfig.PUBLIC_PLAUSIBLE_SCRIPT_URL}

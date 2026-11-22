@@ -1,0 +1,315 @@
+/*
+ * Office theme — document-style productivity look (THEMES.md §11.3, log
+ * P4-01..06). Tokens unlayered + scoped (§5.1); structural overrides in
+ * @layer components. Built-in theme: trusted app code, so @font-face and
+ * full font stacks are allowed here (the §8.2 author rules bind external
+ * themes only).
+ */
+
+/* Selawik (Segoe UI metric-compatible) and Carlito (Calibri equivalent) —
+   both SIL OFL 1.1, licenses shipped as OFL-Selawik.txt / OFL-Carlito.txt.
+   "Segoe UI"/"Calibri" come first so Windows users get the genuine faces. */
+@font-face {
+	font-family: "Selawik";
+	font-style: normal;
+	font-weight: 400;
+	font-display: swap;
+	src: url("./fonts/selawk.woff2") format("woff2");
+}
+@font-face {
+	font-family: "Selawik";
+	font-style: normal;
+	font-weight: 700;
+	font-display: swap;
+	src: url("./fonts/selawkb.woff2") format("woff2");
+}
+@font-face {
+	font-family: "Carlito";
+	font-style: normal;
+	font-weight: 400;
+	font-display: swap;
+	src: url("./fonts/carlito-regular.woff2") format("woff2");
+}
+@font-face {
+	font-family: "Carlito";
+	font-style: normal;
+	font-weight: 700;
+	font-display: swap;
+	src: url("./fonts/carlito-bold.woff2") format("woff2");
+}
+
+:root[data-theme="office"] {
+	/* Surface */
+	--ui-bg: #f3f2f1;
+	--ui-surface: #faf9f8;
+	--ui-surface-raised: #ffffff;
+	--ui-surface-sunken: #f3f2f1;
+	--ui-screen: #ffffff;
+	--ui-screen-image: none;
+	--ui-overlay: rgba(0, 0, 0, 0.4);
+	--ui-border: #e1dfdd;
+	--ui-border-strong: #c8c6c4;
+
+	/* Text */
+	--ui-text: #323130;
+	--ui-text-muted: #605e5c;
+	--ui-text-faint: #a19f9d;
+	--ui-text-inverse: #ffffff;
+	--ui-link: #2b579a;
+
+	/* Actions */
+	--ui-accent: #2b579a;
+	--ui-accent-hover: #106ebe;
+	--ui-accent-text: #ffffff;
+	--ui-accent-ink: #2b579a;
+	--ui-danger: #a4262c;
+	--ui-danger-text: #ffffff;
+	--ui-warning: #797673;
+	--ui-warning-text: #fce100;
+	--ui-success: #107c10;
+	--ui-success-text: #ffffff;
+	--ui-info: #2b579a;
+	--ui-info-text: #ffffff;
+
+	/* Chat */
+	--ui-bubble-user-bg: #deecf9;
+	--ui-bubble-user-text: #323130;
+	--ui-bubble-assistant-bg: #ffffff;
+	--ui-bubble-assistant-text: #323130;
+	--ui-code-bg: #f3f2f1;
+	--ui-code-text: #323130;
+
+	/* States */
+	--ui-selection-bg: color-mix(in srgb, #2b579a 25%, transparent);
+	--ui-scrollbar-thumb: rgba(0, 0, 0, 0.18);
+	--ui-prose-body: #323130;
+	--ui-prose-heading: #201f1e;
+	--ui-prose-link: #2b579a;
+	--ui-prose-code: #201f1e;
+	--ui-prose-quote: #605e5c;
+	--ui-prose-rule: #e1dfdd;
+	--ui-syntax-comment: #605e5c;
+	--ui-syntax-string: #107c10;
+	--ui-syntax-keyword: #2b579a;
+	--ui-syntax-number: #a4262c;
+	--ui-syntax-function: #2b579a;
+	--ui-theme-color: #f3f2f1;
+
+	/* Type */
+	--ui-font-sans: "Segoe UI", "Selawik", system-ui, -apple-system, sans-serif;
+	--ui-font-display: "Segoe UI Semibold", "Selawik", "Segoe UI", system-ui, sans-serif;
+	--ui-font-mono: ui-monospace, "Cascadia Mono", "Segoe UI Mono", Consolas, monospace;
+	--ui-font-size-base: 100%;
+	--ui-label-tracking: 0;
+	--ui-label-transform: none;
+
+	/* Shape: Word's tight 2px family */
+	--ui-radius-sm: 2px;
+	--ui-radius-md: 2px;
+	--ui-radius-lg: 4px;
+	--ui-radius-xl: 4px;
+	--ui-radius-pill: 2px;
+	--ui-border-width: 1px;
+
+	/* Depth: Word's flat chrome + page shadow */
+	--ui-shadow-sm: 0 1px 2px 0 rgb(0 0 0 / 0.06);
+	--ui-shadow-md: 0 1px 3px 0 rgb(0 0 0 / 0.12);
+	--ui-shadow-lg: 0 4px 12px 0 rgb(0 0 0 / 0.14);
+	--ui-focus-ring-color: #2b579a;
+	--ui-focus-ring-width: 2px;
+	--ui-focus-ring-offset: 0px;
+
+	/* Motion */
+	--ui-motion-fast: 100ms;
+	--ui-motion-base: 200ms;
+	--ui-motion-ease: ease;
+
+	/* Density: Word chrome is dense */
+	--ui-control-height: 28px;
+	--ui-gutter: 0.75rem;
+
+	/* Status bar (P4-05) */
+	--ui-statusbar-bg: #f3f2f1;
+	--ui-statusbar-text: #605e5c;
+
+	/* Optional tokens */
+	--ui-shimmer-from: rgba(96, 94, 92, 1);
+	--ui-shimmer-to: rgba(96, 94, 92, 0.5);
+	--ui-highlight-bg: #deecf9;
+	--ui-cite-bg: rgba(43, 89, 154, 0.08);
+	--ui-cite-text: #2b579a;
+
+	/* LCARS accent-capsule re-mapping: capsule utilities become Office status
+	   bar zones / accent fills. */
+	--color-ui-amber: var(--ui-accent);
+	--color-ui-on-amber: var(--ui-accent-text);
+	--color-ui-peach: var(--ui-statusbar-bg);
+	--color-ui-on-peach: var(--ui-statusbar-text);
+	--color-ui-lilac: var(--ui-statusbar-bg);
+	--color-ui-on-lilac: var(--ui-statusbar-text);
+	--color-ui-mauve: var(--ui-statusbar-bg);
+	--color-ui-sky: var(--ui-statusbar-bg);
+	--color-ui-on-sky: var(--ui-statusbar-text);
+	--color-ui-marigold: var(--ui-accent);
+}
+
+:root[data-theme="office"].dark {
+	--ui-bg: #201f1e;
+	--ui-surface: #2b2a29;
+	--ui-surface-raised: #3b3a39;
+	--ui-surface-sunken: #201f1e;
+	--ui-screen: #252423;
+	--ui-overlay: rgba(0, 0, 0, 0.55);
+	--ui-border: #3b3a39;
+	--ui-border-strong: #605e5c;
+
+	--ui-text: #f3f2f1;
+	--ui-text-muted: #c8c6c4;
+	--ui-text-faint: #797673;
+	--ui-text-inverse: #ffffff;
+	--ui-link: #479ef5;
+
+	--ui-accent: #3b82f6;
+	--ui-accent-hover: #2f75e6;
+	--ui-accent-text: #ffffff;
+	--ui-accent-ink: #479ef5;
+	--ui-danger: #f1707b;
+	--ui-warning: #fce100;
+	--ui-warning-text: #201f1e;
+	--ui-success: #6ccb5f;
+	--ui-info: #479ef5;
+
+	--ui-bubble-user-bg: #1f4e79;
+	--ui-bubble-user-text: #f3f2f1;
+	--ui-bubble-assistant-bg: #252423;
+	--ui-bubble-assistant-text: #f3f2f1;
+	--ui-code-bg: #201f1e;
+	--ui-code-text: #f3f2f1;
+
+	--ui-selection-bg: color-mix(in srgb, #479ef5 30%, transparent);
+	--ui-scrollbar-thumb: rgba(255, 255, 255, 0.18);
+	--ui-prose-body: #c8c6c4;
+	--ui-prose-heading: #f3f2f1;
+	--ui-prose-link: #479ef5;
+	--ui-prose-code: #f3f2f1;
+	--ui-prose-quote: #c8c6c4;
+	--ui-prose-rule: #3b3a39;
+	--ui-syntax-comment: #797673;
+	--ui-syntax-string: #6ccb5f;
+	--ui-syntax-keyword: #479ef5;
+	--ui-syntax-number: #f1707b;
+	--ui-syntax-function: #479ef5;
+	--ui-theme-color: #201f1e;
+
+	--ui-statusbar-bg: #201f1e;
+	--ui-statusbar-text: #c8c6c4;
+	--ui-shimmer-from: rgba(200, 198, 196, 0.3);
+	--ui-shimmer-to: rgba(200, 198, 196, 0.8);
+	--ui-highlight-bg: rgb(71 158 245 / 0.35);
+	--ui-cite-bg: rgba(71 158 245 / 0.12);
+	--ui-cite-text: #479ef5;
+}
+
+@layer components {
+	/* Document-page canvas: the .ui-page hook (message column) becomes a white
+	   page floating on the gray chrome, like Word's editing surface. */
+	:root[data-theme="office"] .ui-page,
+	:root[data-theme="office"] .lcars-page {
+		background: var(--ui-screen);
+		box-shadow: var(--ui-shadow-md);
+		border: var(--ui-border-width) solid var(--ui-border);
+		padding: 2rem 2.5rem;
+	}
+
+	/* Flat panels: navigation pane surface, hairline border, 4px radius. */
+	:root[data-theme="office"] .ui-panel,
+	:root[data-theme="office"] .lcars-panel {
+		background: var(--ui-surface);
+		border: var(--ui-border-width) solid var(--ui-border);
+		border-radius: var(--ui-radius-md);
+	}
+
+	/* No screen canvas treatment — the app IS the document. */
+	:root[data-theme="office"] .ui-screen,
+	:root[data-theme="office"] .lcars-screen {
+		background: var(--ui-screen);
+		border: 0;
+		box-shadow: none;
+		border-radius: 0;
+	}
+
+	/* Square segments instead of capsules (title bar, status bar zones). */
+	:root[data-theme="office"] .ui-cap-r,
+	:root[data-theme="office"] .lcars-cap-r {
+		border-radius: var(--ui-radius-sm);
+	}
+	:root[data-theme="office"] .ui-cap-up,
+	:root[data-theme="office"] .lcars-cap-up {
+		border-radius: 0;
+	}
+
+	/* Segoe UI / Selawik, sentence case, 13px-ish labels. */
+	:root[data-theme="office"] .ui-label,
+	:root[data-theme="office"] .lcars-label,
+	:root[data-theme="office"] .ui-kicker,
+	:root[data-theme="office"] .lcars-kicker {
+		font-family: var(--ui-font-sans);
+		font-size: 0.6875rem;
+		font-weight: 400;
+		letter-spacing: var(--ui-label-tracking);
+		text-transform: var(--ui-label-transform);
+	}
+
+	:root[data-theme="office"] .ui-display,
+	:root[data-theme="office"] .lcars-display {
+		font-family: var(--ui-font-display);
+		font-weight: 600;
+		letter-spacing: -0.01em;
+		text-transform: none;
+	}
+
+	/* Ribbon-style flat buttons. */
+	:root[data-theme="office"] .ui-btn,
+	:root[data-theme="office"] .lcars-btn {
+		border-radius: var(--ui-radius-sm);
+		font-family: var(--ui-font-sans);
+		font-size: 0.8125rem;
+		font-weight: 600;
+		letter-spacing: 0;
+		text-transform: none;
+		padding: 0.375rem 1rem;
+		min-height: var(--ui-control-height);
+	}
+
+	:root[data-theme="office"] .ui-chip,
+	:root[data-theme="office"] .lcars-chip {
+		border-radius: var(--ui-radius-sm);
+		background: var(--ui-surface-sunken);
+		color: var(--ui-text-muted);
+		font-family: var(--ui-font-sans);
+		font-size: 0.75rem;
+		letter-spacing: 0;
+		text-transform: none;
+	}
+
+	/* Send button: solid accent square. */
+	:root[data-theme="office"] .ui-beacon,
+	:root[data-theme="office"] .lcars-beacon {
+		border-radius: var(--ui-radius-sm);
+		background: var(--ui-accent);
+		box-shadow: none;
+		color: var(--ui-accent-text);
+	}
+
+	/* Status-bar zones: flat --ui-statusbar-* surfaces (P4-05). */
+	:root[data-theme="office"] .ui-cap-up,
+	:root[data-theme="office"] .lcars-cap-up {
+		background: var(--ui-statusbar-bg);
+		color: var(--ui-statusbar-text);
+	}
+
+	/* Composer: comment-box look (2px radius, hairline border). */
+	:root[data-theme="office"] .ui-composer.ui-panel {
+		border-radius: var(--ui-radius-md);
+	}
+}

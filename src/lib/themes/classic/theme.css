@@ -1,0 +1,309 @@
+/*
+ * Classic theme — the original chat-ui look (THEMES.md §11.2, log P3-01/02).
+ *
+ * Token blocks are unlayered + scoped (§5.1); structural overrides live in
+ * @layer components. The gray ramp overrides the LCARS warm values —
+ * utilities compile to var(--color-gray-*) so this re-themes ~3,000 existing
+ * neutral utilities without touching components (§6.4).
+ */
+
+:root[data-theme="classic"] {
+	--color-gray-50: #fafafa;
+	--color-gray-100: #f5f5f5;
+	--color-gray-200: #e5e5e5;
+	--color-gray-300: #d4d4d4;
+	--color-gray-400: #a3a3a3;
+	--color-gray-500: #737373;
+	--color-gray-600: #454545;
+	--color-gray-700: #2e2e2e;
+	--color-gray-800: #1a1a1a;
+	--color-gray-900: #0a0a0a;
+	--color-gray-950: #000000;
+
+	/* Surface */
+	--ui-bg: #ffffff;
+	--ui-surface: #ffffff;
+	--ui-surface-raised: #fafafa;
+	--ui-surface-sunken: #f5f5f5;
+	--ui-screen: #ffffff;
+	--ui-screen-image: none;
+	--ui-overlay: rgba(0, 0, 0, 0.6);
+	--ui-border: #e5e5e5;
+	--ui-border-strong: #d4d4d4;
+
+	/* Text */
+	--ui-text: #171717;
+	--ui-text-muted: #737373;
+	--ui-text-faint: #a3a3a3;
+	--ui-text-inverse: #ffffff;
+	--ui-link: #2563eb;
+
+	/* Actions */
+	--ui-accent: #000000;
+	--ui-accent-hover: #333333;
+	--ui-accent-text: #ffffff;
+	--ui-accent-ink: #171717;
+	--ui-danger: #dc2626;
+	--ui-danger-text: #ffffff;
+	--ui-warning: #d97706;
+	--ui-warning-text: #ffffff;
+	--ui-success: #16a34a;
+	--ui-success-text: #ffffff;
+	--ui-info: #2563eb;
+	--ui-info-text: #ffffff;
+
+	/* Chat */
+	--ui-bubble-user-bg: transparent;
+	--ui-bubble-user-text: var(--ui-text);
+	--ui-bubble-assistant-bg: transparent;
+	--ui-bubble-assistant-text: var(--ui-text);
+	--ui-code-bg: #f5f5f5;
+	--ui-code-text: #171717;
+
+	/* States */
+	--ui-selection-bg: color-mix(in srgb, #2563eb 20%, transparent);
+	--ui-scrollbar-thumb: rgba(0, 0, 0, 0.15);
+	--ui-prose-body: #454545;
+	--ui-prose-heading: #0a0a0a;
+	--ui-prose-link: #0a0a0a;
+	--ui-prose-code: #0a0a0a;
+	--ui-prose-quote: #0a0a0a;
+	--ui-prose-rule: #e5e5e5;
+	--ui-syntax-comment: #a0a1a7;
+	--ui-syntax-string: #50a14f;
+	--ui-syntax-keyword: #a626a4;
+	--ui-syntax-number: #986801;
+	--ui-syntax-function: #4078f2;
+	--ui-theme-color: #ffffff;
+
+	/* Type */
+	--ui-font-sans: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+	--ui-font-display: var(--ui-font-sans);
+	--ui-font-mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+	--ui-font-size-base: 100%;
+	--ui-label-tracking: 0;
+	--ui-label-transform: none;
+
+	/* Shape: the original rounded-xl/2xl family */
+	--ui-radius-sm: 0.375rem;
+	--ui-radius-md: 0.75rem;
+	--ui-radius-lg: 1rem;
+	--ui-radius-xl: 1.25rem;
+	--ui-radius-pill: 9999px;
+	--ui-border-width: 1px;
+
+	/* Depth */
+	--ui-shadow-sm: 0 1px 2px 0 rgb(0 0 0 / 0.05);
+	--ui-shadow-md: 0 1px 3px 0 rgb(0 0 0 / 0.1), 0 1px 2px -1px rgb(0 0 0 / 0.1);
+	--ui-shadow-lg: 0 10px 15px -3px rgb(0 0 0 / 0.1), 0 4px 6px -4px rgb(0 0 0 / 0.1);
+	--ui-focus-ring-color: #2563eb;
+	--ui-focus-ring-width: 2px;
+	--ui-focus-ring-offset: 0px;
+
+	/* Motion */
+	--ui-motion-fast: 150ms;
+	--ui-motion-base: 300ms;
+	--ui-motion-ease: ease;
+
+	/* Density */
+	--ui-control-height: 0px;
+	--ui-gutter: 1rem;
+
+	/* Optional tokens */
+	--ui-shimmer-from: rgba(156, 163, 175, 1);
+	--ui-shimmer-to: rgba(156, 163, 175, 0.6);
+	--ui-highlight-bg: #fde68a;
+	--ui-cite-bg: rgb(15 118 110 / 0.09);
+	--ui-cite-text: #0f766e;
+
+	/* LCARS accent-capsule re-mapping (§12.3): the ~78 bg-ui-amber-style
+	   utilities across components were LCARS accent fills. Under classic they
+	   resolve to the original look's neutrals/blue via the semantic tokens, so
+	   no LCARS amber/lilac/peach leaks through (P3 acceptance). */
+	--color-ui-amber: var(--ui-accent);
+	--color-ui-on-amber: var(--ui-accent-text);
+	--color-ui-peach: var(--ui-surface-raised);
+	--color-ui-on-peach: var(--ui-text);
+	--color-ui-lilac: var(--ui-surface-sunken);
+	--color-ui-on-lilac: var(--ui-text-muted);
+	--color-ui-mauve: var(--ui-surface-sunken);
+	--color-ui-sky: var(--ui-info);
+	--color-ui-on-sky: var(--ui-info-text);
+	--color-ui-marigold: var(--ui-border-strong);
+}
+
+:root[data-theme="classic"].dark {
+	--color-gray-50: #0a0a0a;
+	--color-gray-100: #171717;
+	--color-gray-200: #262626;
+	--color-gray-300: #404040;
+	--color-gray-400: #525252;
+	--color-gray-500: #737373;
+	--color-gray-600: #a3a3a3;
+	--color-gray-700: #d4d4d4;
+	--color-gray-800: #e5e5e5;
+	--color-gray-900: #f5f5f5;
+	--color-gray-950: #fafafa;
+
+	--ui-bg: #0a0a0a;
+	--ui-surface: #171717;
+	--ui-surface-raised: #1f1f1f;
+	--ui-surface-sunken: #262626;
+	--ui-screen: #0a0a0a;
+	--ui-overlay: rgba(0, 0, 0, 0.6);
+	--ui-border: #404040;
+	--ui-border-strong: #525252;
+
+	--ui-text: #f5f5f5;
+	--ui-text-muted: #a3a3a3;
+	--ui-text-faint: #737373;
+	--ui-text-inverse: #0a0a0a;
+	--ui-link: #60a5fa;
+
+	--ui-accent: #ffffff;
+	--ui-accent-hover: #e5e5e5;
+	--ui-accent-text: #0a0a0a;
+	--ui-accent-ink: #f5f5f5;
+	--ui-danger: #ef4444;
+	--ui-warning: #f59e0b;
+	--ui-success: #22c55e;
+	--ui-info: #3b82f6;
+
+	--ui-bubble-user-bg: transparent;
+	--ui-bubble-user-text: var(--ui-text);
+	--ui-bubble-assistant-bg: transparent;
+	--ui-bubble-assistant-text: var(--ui-text);
+	--ui-code-bg: #262626;
+	--ui-code-text: #f5f5f5;
+
+	--ui-selection-bg: color-mix(in srgb, #3b82f6 25%, transparent);
+	--ui-scrollbar-thumb: rgba(255, 255, 255, 0.15);
+	--ui-prose-body: #d4d4d4;
+	--ui-prose-heading: #f5f5f5;
+	--ui-prose-link: #f5f5f5;
+	--ui-prose-code: #f5f5f5;
+	--ui-prose-quote: #f5f5f5;
+	--ui-prose-rule: #404040;
+	--ui-theme-color: #0a0a0a;
+
+	--ui-shadow-sm: 0 1px 2px 0 rgb(0 0 0 / 0.3);
+	--ui-shadow-md: 0 1px 3px 0 rgb(0 0 0 / 0.4), 0 1px 2px -1px rgb(0 0 0 / 0.4);
+	--ui-shadow-lg: 0 10px 15px -3px rgb(0 0 0 / 0.4), 0 4px 6px -4px rgb(0 0 0 / 0.4);
+	--ui-focus-ring-color: #60a5fa;
+	--ui-shimmer-from: rgba(255, 255, 255, 0.15);
+	--ui-shimmer-to: rgba(255, 255, 255, 0.7);
+	--ui-highlight-bg: rgb(251 191 36 / 0.45);
+	--ui-cite-bg: rgb(94 234 212 / 0.1);
+
+	/* Dark accent-capsule re-mapping (same semantic bridge, dark values). */
+	--color-ui-amber: var(--ui-accent);
+	--color-ui-on-amber: var(--ui-accent-text);
+	--color-ui-peach: var(--ui-surface-raised);
+	--color-ui-on-peach: var(--ui-text);
+	--color-ui-lilac: var(--ui-surface-sunken);
+	--color-ui-on-lilac: var(--ui-text-muted);
+	--color-ui-mauve: var(--ui-surface-sunken);
+	--color-ui-sky: var(--ui-info);
+	--color-ui-on-sky: var(--ui-info-text);
+	--color-ui-marigold: var(--ui-border-strong);
+}
+
+@layer components {
+	/* Panels go transparent with hairline borders — the original sidebar and
+	   composer sat directly on the page background. */
+	:root[data-theme="classic"] .ui-panel,
+	:root[data-theme="classic"] .lcars-panel {
+		background: var(--ui-surface);
+		border-color: var(--ui-border);
+		border-radius: var(--ui-radius-lg);
+	}
+
+	/* No screen canvas: the chat column sits on the page. */
+	:root[data-theme="classic"] .ui-screen,
+	:root[data-theme="classic"] .lcars-screen {
+		background: var(--ui-screen);
+		border: 0;
+		box-shadow: none;
+		border-radius: 0;
+	}
+
+	/* Square-ish buttons, sentence case, system font. */
+	:root[data-theme="classic"] .ui-btn,
+	:root[data-theme="classic"] .lcars-btn {
+		border-radius: var(--ui-radius-md);
+		font-family: var(--ui-font-sans);
+		font-size: 0.875rem;
+		font-weight: 500;
+		letter-spacing: 0;
+		text-transform: none;
+		padding: 0.5rem 1rem;
+	}
+
+	:root[data-theme="classic"] .ui-label,
+	:root[data-theme="classic"] .lcars-label,
+	:root[data-theme="classic"] .ui-kicker,
+	:root[data-theme="classic"] .lcars-kicker {
+		font-family: var(--ui-font-sans);
+		letter-spacing: var(--ui-label-tracking);
+		text-transform: var(--ui-label-transform);
+	}
+
+	:root[data-theme="classic"] .ui-display,
+	:root[data-theme="classic"] .lcars-display {
+		font-family: var(--ui-font-sans);
+		font-weight: 600;
+		letter-spacing: -0.01em;
+		text-transform: none;
+	}
+
+	:root[data-theme="classic"] .ui-chip,
+	:root[data-theme="classic"] .lcars-chip {
+		border-radius: var(--ui-radius-sm);
+		background: var(--ui-surface-sunken);
+		color: var(--ui-text-muted);
+		font-family: var(--ui-font-sans);
+		text-transform: none;
+		letter-spacing: 0;
+	}
+
+	/* User messages render as plain text (no bubble). */
+	:root[data-theme="classic"] .ui-bubble,
+	:root[data-theme="classic"] .lcars-bubble {
+		background: transparent;
+		border: 0;
+		border-radius: 0;
+	}
+
+	/* Assistant card: the original gray gradient card. */
+	:root[data-theme="classic"] .ui-msg-card,
+	:root[data-theme="classic"] .lcars-msg-card {
+		border-radius: var(--ui-radius-xl);
+		border-color: var(--ui-border);
+		background: linear-gradient(to bottom right, var(--color-gray-50), var(--ui-surface));
+		color: var(--color-gray-600);
+	}
+	:root[data-theme="classic"].dark .ui-msg-card,
+	:root[data-theme="classic"].dark .lcars-msg-card {
+		border-color: var(--color-gray-800);
+		background: linear-gradient(to bottom right, var(--color-gray-800), var(--ui-surface));
+		color: var(--color-gray-300);
+	}
+
+	/* No canvas fade under the composer. */
+	:root[data-theme="classic"] .ui-composer-fade,
+	:root[data-theme="classic"] .lcars-composer-fade {
+		background: transparent;
+	}
+
+	/* Status LED keeps its shape; beacon becomes a plain accent disc. */
+	:root[data-theme="classic"] .ui-beacon,
+	:root[data-theme="classic"] .lcars-beacon {
+		background: var(--ui-accent);
+		box-shadow: none;
+		color: var(--ui-accent-text);
+	}
+	:root[data-theme="classic"] .ui-beacon:hover:not(:disabled),
+	:root[data-theme="classic"] .lcars-beacon:hover:not(:disabled) {
+		background: var(--ui-accent-hover);
+	}
+}

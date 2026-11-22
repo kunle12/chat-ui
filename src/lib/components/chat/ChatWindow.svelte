@@ -117,6 +117,7 @@
 	import { requireAuthUser } from "$lib/utils/auth";
 	import { tap, error as hapticError } from "$lib/utils/haptics";
 	import { page } from "$app/state";
+	import { getActiveTheme } from "$lib/themes/themes.svelte";
 
 	// Only this conversation's question; the store outlives a navigation by a tick.
 	let questionStore = $derived(firstQuestionFor(page.params.id));
@@ -1311,41 +1312,80 @@
 		{#if shareModalOpen}
 			<ShareConversationModal open={shareModalOpen} onclose={() => shareModal.close()} />
 		{/if}
-		<!-- LCARS panel header: conversation kicker, model capsule, stream readout. -->
-		<div class="relative z-[2] flex flex-none items-center gap-2.5 px-4 pt-3 pb-2.5 sm:px-5">
-			<span class="lcars-kicker min-w-0 truncate text-lcars-dim">
-				{page.params?.id
-					? `conversation · ${String(page.params.id).slice(-6)}`
-					: "new transmission"}
-			</span>
-			<span
-				class="lcars-label lcars-cap-r hidden bg-lcars-peach px-2.5 py-1 text-[0.625rem] font-bold text-lcars-on-peach sm:inline-flex"
-				title={currentModel.displayName}
+		<!-- Panel header: conversation kicker, model capsule, stream readout.
+		     .ui-header: theme hook (THEMES.md §7). classic hides it entirely
+		     (chatHeader: "hidden"); office renders a minimal title bar; the
+		     share button moves to its pre-LCARS absolute position. -->
+		{#if getActiveTheme().manifest.chrome.chatHeader === "minimal"}
+			<div
+				class="ui-header relative z-[2] flex flex-none items-center gap-3 border-b border-ui-panel-edge px-4 py-2"
 			>
-				<span class="max-w-40 truncate">{currentModel.displayName}</span>
-			</span>
-			<span
-				class="lcars-label ml-auto flex flex-none items-center gap-2 text-[0.5625rem] text-lcars-dim"
+				<span class="min-w-0 truncate text-[0.8125rem] font-semibold text-ui-ink">
+					{currentModel.displayName}
+				</span>
+				{#if canShare}
+					<button
+						type="button"
+						class="ml-auto flex size-7 flex-none items-center justify-center rounded-sm text-ui-muted hover:bg-ui-screen-2 hover:text-ui-ink {loading
+							? 'cursor-not-allowed opacity-40'
+							: ''}"
+						onclick={() => shareModal.open()}
+						aria-label="Share conversation"
+						disabled={loading}
+					>
+						<IconShare />
+					</button>
+				{/if}
+			</div>
+		{:else if getActiveTheme().manifest.chrome.chatHeader !== "hidden"}
+			<div
+				class="ui-header relative z-[2] flex flex-none items-center gap-2.5 px-4 pt-3 pb-2.5 sm:px-5"
 			>
-				<span class="lcars-led" class:standby={!modelsReady}></span>
-				{loading ? "Streaming" : modelsReady ? "Ready" : "Standing by"}
-			</span>
-			{#if canShare}
-				<!-- Lives in the chat column (not the layout) so it stays visible when
-				     the artifact panel is open -->
-				<button
-					type="button"
-					class="flex size-7 flex-none items-center justify-center rounded-full bg-lcars-panel text-sm text-lcars-muted ring-1 ring-lcars-panel-edge hover:text-lcars-ink max-sm:hidden {loading
-						? 'cursor-not-allowed opacity-40'
-						: ''}"
-					onclick={() => shareModal.open()}
-					aria-label="Share conversation"
-					disabled={loading}
+				<span class="ui-kicker min-w-0 truncate text-ui-dim">
+					{page.params?.id
+						? `conversation · ${String(page.params.id).slice(-6)}`
+						: "new transmission"}
+				</span>
+				<span
+					class="ui-label ui-cap-r hidden bg-ui-peach px-2.5 py-1 text-[0.625rem] font-bold text-ui-on-peach sm:inline-flex"
+					title={currentModel.displayName}
 				>
-					<IconShare />
-				</button>
-			{/if}
-		</div>
+					<span class="max-w-40 truncate">{currentModel.displayName}</span>
+				</span>
+				<span
+					class="ui-label ml-auto flex flex-none items-center gap-2 text-[0.5625rem] text-ui-dim"
+				>
+					<span class="ui-led" class:standby={!modelsReady}></span>
+					{loading ? "Streaming" : modelsReady ? "Ready" : "Standing by"}
+				</span>
+				{#if canShare}
+					<button
+						type="button"
+						class="flex size-7 flex-none items-center justify-center rounded-full bg-ui-panel text-sm text-ui-muted ring-1 ring-ui-panel-edge hover:text-ui-ink max-sm:hidden {loading
+							? 'cursor-not-allowed opacity-40'
+							: ''}"
+						onclick={() => shareModal.open()}
+						aria-label="Share conversation"
+						disabled={loading}
+					>
+						<IconShare />
+					</button>
+				{/if}
+			</div>
+		{:else if canShare}
+			<!-- Pre-LCARS share placement: floating at the top-right of the column -->
+			<button
+				type="button"
+				class="absolute top-5 right-6 z-10 hidden size-8 items-center justify-center gap-2 rounded-xl border border-gray-200 bg-white/90 text-sm font-medium text-gray-700 shadow-xs hover:bg-white/60 hover:text-gray-500 md:flex dark:border-gray-700 dark:bg-gray-800/80 dark:text-gray-200 dark:hover:bg-gray-700 {loading
+					? 'cursor-not-allowed opacity-40'
+					: ''}"
+				onclick={() => shareModal.open()}
+				aria-label="Share conversation"
+				disabled={loading}
+			>
+				<IconShare />
+			</button>
+		{/if}
 		{#if featureAnnouncement && showFeatureAnnouncement && !mlSpotlightVisible}
 			<FeatureAnnouncementToast announcement={featureAnnouncement} />
 		{/if}
@@ -1354,8 +1394,9 @@
 		     keyboard-only users cannot scroll the conversation at all. Keyboard
 		     focus draws a soft inset ring instead of the browser's default
 		     outline around the whole pane; mouse focus draws nothing. -->
+		<!-- .ui-scroll: theme hook — scrollbar/selection wiring, office page margins. -->
 		<div
-			class="scrollbar-custom min-h-0 flex-1 [scrollbar-gutter:stable_both-edges] overflow-y-auto overscroll-contain focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-lcars-amber/60"
+			class="ui-scroll scrollbar-custom min-h-0 flex-1 [scrollbar-gutter:stable_both-edges] overflow-y-auto overscroll-contain focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-ui-amber/60"
 			tabindex="0"
 			aria-label="Conversation messages"
 			use:chatScroll.attach={{
@@ -1364,9 +1405,10 @@
 			}}
 		>
 			<!-- @container: descendants (e.g. the per-message router-metadata row) adapt
-			     to the actual column width, which shrinks when the artifact panel is open -->
+			     to the actual column width, which shrinks when the artifact panel is open.
+			     .ui-page: theme hook — office wraps this column as a document page. -->
 			<div
-				class="@container mx-auto flex h-full max-w-3xl flex-col gap-6 px-5 pt-6 sm:gap-8 xl:max-w-4xl xl:pt-10"
+				class="ui-page @container mx-auto flex h-full max-w-3xl flex-col gap-6 px-5 pt-6 sm:gap-8 xl:max-w-4xl xl:pt-10"
 			>
 				{#if preprompt && preprompt != currentModel.preprompt}
 					<SystemPromptModal preprompt={preprompt ?? ""} />
@@ -1486,7 +1528,7 @@
 		     the scroller's scrollbar-gutter on classic-scrollbar platforms. -->
 		<div
 			bind:clientHeight={composerHeight}
-			class="lcars-composer-fade pointer-events-none absolute inset-x-0 bottom-0 z-0 mx-auto flex w-full
+			class="ui-composer-fade pointer-events-none absolute inset-x-0 bottom-0 z-0 mx-auto flex w-full
 			max-w-3xl flex-col items-center justify-center px-[calc(0.875rem+var(--scrollbar-gutter,0px))] pt-2 *:pointer-events-auto
 			max-sm:py-0 sm:px-[calc(1.25rem+var(--scrollbar-gutter,0px))]
 			md:pb-4 xl:max-w-4xl"
@@ -1621,9 +1663,11 @@
 							handleSubmit();
 						}}
 						class={{
-							"lcars-panel relative flex w-full max-w-4xl flex-1 flex-col rounded-[22px]": true,
-							"transition-[border-color] duration-[350ms] ease-[ease] focus-within:ring-1 focus-within:ring-lcars-amber/40": true,
-							"border-lcars-marigold!": mlModeOn,
+							// .ui-composer: theme hook — all three themes restyle the
+							// composer (pill / classic card / office comment box).
+							"ui-composer ui-panel relative flex w-full max-w-4xl flex-1 flex-col rounded-(--ui-radius-xl)": true,
+							"transition-[border-color] duration-[350ms] ease-[ease] focus-within:ring-1 focus-within:ring-ui-amber/40": true,
+							"border-ui-marigold!": mlModeOn,
 							"opacity-30": isReadOnly,
 							"max-sm:mb-4": focused && isVirtualKeyboard(),
 						}}
@@ -1698,7 +1742,7 @@
 
 									{#if loading && queueing && draft.trim() && !draftIsSideQuestion}
 										<button
-											class="lcars-btn absolute right-11 bottom-2 size-8 self-end bg-lcars-sky p-0 text-lcars-on-sky shadow-sm transition-none sm:right-10 sm:size-7"
+											class="ui-btn absolute right-11 bottom-2 size-8 self-end bg-ui-sky p-0 text-ui-on-sky shadow-sm transition-none sm:right-10 sm:size-7"
 											type="submit"
 											aria-label="Queue message"
 											title="Queue: read at the next step"
@@ -1714,13 +1758,13 @@
 												onstop?.();
 											}}
 											showBorder={true}
-											classNames="absolute bottom-2 right-2 flex size-8 items-center justify-center self-end rounded-full bg-lcars-panel text-lcars-ink shadow-sm ring-1 ring-lcars-panel-edge transition-none sm:size-7"
+											classNames="absolute bottom-2 right-2 flex size-8 items-center justify-center self-end rounded-full bg-ui-panel text-ui-ink shadow-sm ring-1 ring-ui-panel-edge transition-none sm:size-7"
 										/>
 									{:else}
 										{#if transcriptionEnabled}
 											<button
 												type="button"
-												class="absolute right-10 bottom-2 mr-1.5 btn size-8 self-end rounded-full bg-lcars-panel/70 text-lcars-muted ring-1 ring-lcars-panel-edge transition-none hover:text-lcars-ink sm:right-9 sm:size-7"
+												class="absolute right-10 bottom-2 mr-1.5 btn size-8 self-end rounded-full bg-ui-panel/70 text-ui-muted ring-1 ring-ui-panel-edge transition-none hover:text-ui-ink sm:right-9 sm:size-7"
 												disabled={isReadOnly}
 												onclick={() => {
 													isRecording = true;
@@ -1731,7 +1775,7 @@
 											</button>
 										{/if}
 										<button
-											class="lcars-beacon absolute right-2 bottom-2 flex size-8 items-center justify-center self-end transition-transform enabled:hover:scale-105 disabled:opacity-40 disabled:grayscale sm:size-7"
+											class="ui-beacon absolute right-2 bottom-2 flex size-8 items-center justify-center self-end transition-transform enabled:hover:scale-105 disabled:opacity-40 disabled:grayscale sm:size-7"
 											disabled={!draft || isReadOnly}
 											type="submit"
 											aria-label="Send message"

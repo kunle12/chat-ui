@@ -1,4 +1,4 @@
-import type { Handle, RequestEvent } from "@sveltejs/kit";
+import type { Cookies, Handle, RequestEvent } from "@sveltejs/kit";
 import { collections } from "$lib/server/database";
 import { base } from "$app/paths";
 import { dev } from "$app/environment";
@@ -16,7 +16,27 @@ import { isHostLocalhost } from "$lib/server/isURLLocal";
 import { runWithRequestContext, updateRequestContext } from "$lib/server/requestContext";
 import { config, ready } from "$lib/server/config";
 import { isSlackConversationMutation } from "$lib/server/slack/readOnly";
+import { BOOTSTRAP_SCRIPT } from "$lib/themes/bootstrap";
+import { cookieThemeAttrs } from "$lib/themes/server";
+import { isBuiltinThemeId, sanitizeThemeId } from "$lib/themes/registry";
+import { readExternalManifest } from "$lib/server/themes/loader";
 import { parseRequestOrigin } from "./origin";
+
+/**
+ * `<link rel=preload + stylesheet>` for a cookie-selected external theme
+ * (THEMES.md §9.4, log task P5-06). Returns "" for built-ins and unknown ids.
+ */
+function themeAssetsMarkup(cookies: Cookies, origin: string, basePath: string): string {
+	const id = sanitizeThemeId(cookies.get("ui-theme"));
+	if (!id || isBuiltinThemeId(id)) return "";
+	const manifest = readExternalManifest(id);
+	if (!manifest) return "";
+	const v = manifest.version;
+	return (
+		`<link rel="preload" href="${origin}${basePath}/api/v2/themes/${id}/theme.css" as="style">` +
+		`<link rel="stylesheet" href="${origin}${basePath}/api/v2/themes/${id}/theme.css?v=${v}">`
+	);
+}
 
 type HandleInput = Parameters<Handle>[0];
 
@@ -239,16 +259,53 @@ export async function handleRequest({ event, resolve }: HandleInput): Promise<Re
 
 			const response = await resolve(event, {
 				transformPageChunk: (chunk) => {
-					// For some reason, Sveltekit doesn't let us load env variables from .env in the app.html template
-					if (replaced || !chunk.html.includes("%gaId%")) {
-						return chunk.html;
-					}
-					replaced = true;
+					let html = chunk.html;
 
-					return chunk.html.replace(
-						"%gaId%",
-						event.url.pathname.startsWith(`${base}/slack/`) ? "" : config.PUBLIC_GOOGLE_ANALYTICS_ID
-					);
+					// For some reason, Sveltekit doesn't let us load env variables from .env in the app.html template
+					if (!replaced && html.includes("%gaId%")) {
+						replaced = true;
+						html = html.replace(
+							"%gaId%",
+							event.url.pathname.startsWith(`${base}/slack/`)
+								? ""
+								: config.PUBLIC_GOOGLE_ANALYTICS_ID
+						);
+					}
+
+					// Theme attributes for the first paint (THEMES.md §9.2b). The
+					// cookie value is validated against the registry before it may
+					// reach the HTML attribute — never trust it (attribute injection).
+					if (html.includes("%themeAttrs%")) {
+						html = html.replace("%themeAttrs%", cookieThemeAttrs(event.cookies));
+					}
+
+					// External theme stylesheet: when the cookie names a non-builtin
+					// theme, emit preload + stylesheet so the first paint is already
+					// themed (THEMES.md §9.4, log task P5-06).
+					if (html.includes("%themeAssets%")) {
+						html = html.replace(
+							"%themeAssets%",
+							themeAssetsMarkup(event.cookies, event.url.origin, base)
+						);
+					}
+
+					// Pre-paint bootstrap from a single tested source
+					// (src/lib/themes/bootstrap.ts).
+					if (html.includes("%themeBootstrapScript%")) {
+						html = html.replace("%themeBootstrapScript%", BOOTSTRAP_SCRIPT);
+					}
+
+					// A surviving placeholder renders as literal text (or corrupts
+					// the <html> tag) — fail loudly in the logs rather than ship a
+					// broken page silently.
+					if (html.includes("%theme")) {
+						logger.error(
+							{ placeholders: html.match(/%theme[A-Za-z]*%/g) },
+							"Unreplaced theme placeholder in page HTML"
+						);
+					}
+
+					return html;
 				},
 				filterSerializedResponseHeaders: (header) => {
 					return header.includes("content-type");

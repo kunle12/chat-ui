@@ -22,15 +22,15 @@
 				<span class="ring"></span>
 				<span class="ring"></span>
 			{/if}
-			<span class="lcars-beacon grid size-[76px] place-items-center opacity-90">
+			<span class="ui-beacon grid size-[76px] place-items-center opacity-90">
 				<span class="size-2 rounded-full bg-white/80"></span>
 			</span>
 		</div>
 
-		<h2 class="lcars-display mt-6 text-[26px] text-lcars-ink">
+		<h2 class="ui-display mt-6 text-[26px] text-ui-ink">
 			{!ready ? "Standing by" : "No models available"}
 		</h2>
-		<p class="mt-2 max-w-sm text-sm leading-relaxed text-lcars-muted">
+		<p class="mt-2 max-w-sm text-sm leading-relaxed text-ui-muted">
 			{#if !ready}
 				The model server is not reachable yet. This page will show the models as soon as the server
 				comes online.
@@ -41,11 +41,11 @@
 		</p>
 
 		<div class="mt-6 flex overflow-hidden rounded-full">
-			<span class="bg-lcars-lilac px-4 py-2 text-lcars-on-lilac">
-				<span class="lcars-label font-bold">{!ready ? "Awaiting launch" : "Server online"}</span>
+			<span class="bg-ui-lilac px-4 py-2 text-ui-on-lilac">
+				<span class="ui-label font-bold">{!ready ? "Awaiting launch" : "Server online"}</span>
 			</span>
-			<span class="bg-lcars-sky px-4 py-2 text-lcars-on-sky">
-				<span class="lcars-label font-bold">{!ready ? "Auto-retry 5s" : "Idle"}</span>
+			<span class="bg-ui-sky px-4 py-2 text-ui-on-sky">
+				<span class="ui-label font-bold">{!ready ? "Auto-retry 5s" : "Idle"}</span>
 			</span>
 		</div>
 	</div>

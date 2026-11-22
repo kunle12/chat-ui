@@ -139,6 +139,9 @@ preference resolves to dark; users can still pick Light / Dark / System in setti
 - The browser `theme-color` and web app manifests are set to the dark LCARS paper
   (`#0E0F12`).
 
+Multi-theme support (user-selectable themes, portable theme plugins, and the
+`classic`/`office` designs) is specified in [`THEMES.md`](./THEMES.md).
+
 ### Models
 
 Models are discovered from `${OPENAI_BASE_URL}/models`, and you can optionally override their metadata via the `MODELS` env var (JSON5). Legacy provider‑specific integrations and GGUF discovery are removed. Authorization uses `OPENAI_API_KEY` (preferred). `HF_TOKEN` remains a legacy alias.

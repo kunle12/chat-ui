@@ -84,6 +84,13 @@ The UI follows the LCARS design language from the design mockups (dark by defaul
 - **Accessibility**: reduced-motion disables the beacon/LED animations; LCARS capsules
   keep their existing labels/aria attributes and ≥40px touch targets.
 
+A multi-theme architecture (user-selectable `lcars` / `classic` / `office` themes plus a
+portable theme-plugin format) is specified in [`THEMES.md`](./THEMES.md) and **implemented**
+(Phases 0–5 complete; see [`THEMES_IMPLEMENTATION_LOG.md`](./THEMES_IMPLEMENTATION_LOG.md)).
+Pick a theme in Settings → Application. External themes load from `$THEMES_DIR` (validated
+by `npm run validate-themes`). New UI must use `--ui-*` tokens and `.ui-*` primitives —
+`npm run check:theme-colors` enforces the raw-color ratchet.
+
 ## Commands
 
 ```bash

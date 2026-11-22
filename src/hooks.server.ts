@@ -4,6 +4,8 @@ import { initServer } from "$lib/server/hooks/init";
 import { handleRequest } from "$lib/server/hooks/handle";
 import { handleServerError } from "$lib/server/hooks/error";
 import { handleFetchRequest } from "$lib/server/hooks/fetch";
+import { BOOTSTRAP_SCRIPT } from "$lib/themes/bootstrap";
+import { serverDefaultThemeId } from "$lib/themes/server";
 
 export const init: ServerInit = async () => {
 	if (building) return;
@@ -15,7 +17,22 @@ export const handle: Handle = async (input) => {
 		// During static build, still replace %gaId% placeholder with empty string
 		// to prevent the GA script from loading with an invalid ID
 		return input.resolve(input.event, {
-			transformPageChunk: ({ html }) => html.replace("%gaId%", ""),
+			transformPageChunk: ({ html }) => {
+				let out = html.replace("%gaId%", "");
+				// Default theme, no external assets (THEMES.md §9.2b): the static
+				// build has no cookies and no registry runtime.
+				out = out.replace("%themeAttrs%", `data-theme="${serverDefaultThemeId()}" class="dark"`);
+				out = out.replace("%themeAssets%", "");
+				out = out.replace("%themeBootstrapScript%", BOOTSTRAP_SCRIPT);
+				// Build-time assertion: a surviving placeholder would render as
+				// literal text (or break the <html> tag) in the shipped fallback.
+				if (out.includes("%theme")) {
+					throw new Error(
+						`Static build: unreplaced theme placeholder in page template: ${out.match(/%theme[A-Za-z]*%/g)?.join(", ")}`
+					);
+				}
+				return out;
+			},
 		});
 	}
 	return handleRequest(input);
