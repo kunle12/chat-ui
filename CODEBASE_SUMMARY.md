@@ -84,6 +84,9 @@ The UI follows the LCARS design language from the design mockups (dark by defaul
 - **Accessibility**: reduced-motion disables the beacon/LED animations; LCARS capsules
   keep their existing labels/aria attributes and ≥40px touch targets.
 
+A multi-theme architecture (user-selectable `lcars` / `classic` / `office` themes plus a
+portable theme-plugin format) is specified in [`THEMES.md`](./THEMES.md).
+
 ## Commands
 
 ```bash
