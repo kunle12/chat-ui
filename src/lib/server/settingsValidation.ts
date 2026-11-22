@@ -6,6 +6,7 @@ import { config } from "$lib/server/config";
 import { collections } from "$lib/server/database";
 import * as themeRegistry from "$lib/themes/registry";
 import { DEFAULT_THEME_ID } from "$lib/themes/registry";
+import { readExternalManifests } from "$lib/server/themes/loader";
 import { DEFAULT_SETTINGS } from "$lib/types/Settings";
 
 export const settingsSchema = z
@@ -66,9 +67,10 @@ export function parseSettingsPayload(body: unknown): ParsedSettings {
 	// (THEMES.md §9.3). A removed theme must never 400 the payload — that
 	// would block saving every other setting.
 	if (parsed.uiTheme && parsed.uiTheme !== defaultThemeId()) {
-		// Built-ins only until Phase 5 wires external discovery into validation.
-		const { isKnownThemeId } = themeRegistry;
-		if (!isKnownThemeId(parsed.uiTheme)) {
+		// Built-ins + external themes (discovered server-side) count as known.
+		const externalIds = new Set(readExternalManifests().map((m) => m.id));
+		const known = themeRegistry.isKnownThemeId(parsed.uiTheme) || externalIds.has(parsed.uiTheme);
+		if (!known) {
 			parsed.uiTheme = defaultThemeId();
 		}
 	}

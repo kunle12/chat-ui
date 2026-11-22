@@ -11,18 +11,19 @@
 			// For some reason, Sveltekit doesn't let us load env variables from .env here, so we load it from hooks.server.ts
 			window.gaId = "%gaId%";
 		</script>
-		<!-- %themeAssets%: SSR <link rel="stylesheet"> for an external active theme (Phase 5) -->
+		<!-- External theme stylesheet (injected by handle.ts when the cookie
+		     names a non-builtin theme; empty for built-ins). -->
+		%themeAssets%
 		<!-- Pre-paint theme bootstrap; content injected from src/lib/themes/bootstrap.ts.
-		     Deliberately NO nonce attribute: the sveltekit nonce placeholder is
-		     incompatible with adapter-static's fallback generation (Kit refuses to
-		     prerender a template containing it). Revisit when CSP tightens
-		     (THEMES.md §9.4). -->
+		     No nonce: the sveltekit nonce placeholder is incompatible with
+		     adapter-static's fallback generation (Kit refuses to prerender a
+		     template containing it). Revisit when CSP tightens (THEMES.md §9.4). -->
 		<script>
 			%themeBootstrapScript%
 		</script>
 		%sveltekit.head%
 	</head>
-	<body data-sveltekit-preload-data="hover" class="bg-lcars-paper text-lcars-ink h-dvh antialiased">
+	<body data-sveltekit-preload-data="hover" class="h-dvh bg-ui-paper text-ui-ink antialiased">
 		<div id="app" class="contents h-full">%sveltekit.body%</div>
 
 		<!-- Google Tag Manager -->

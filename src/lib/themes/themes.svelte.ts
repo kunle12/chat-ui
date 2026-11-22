@@ -62,6 +62,7 @@ function notifyThemeListeners(): void {
 
 type PersistHook = (id: string, preference: ThemeModePreference | undefined) => void;
 let persistToSettings: PersistHook | undefined;
+let externalThemes: ThemeManifest[] = [];
 
 /**
  * Called from `+layout.svelte` with the SSR-resolved values before anything
@@ -73,12 +74,14 @@ export function initThemeRuntime(input: {
 	preference: ThemeModePreference | undefined;
 	mode: ThemeMode;
 	manifest: ThemeManifest;
+	externalThemes?: ThemeManifest[];
 	persist?: PersistHook;
 }): void {
 	state.id = input.id;
 	state.preference = input.preference;
 	state.mode = input.mode;
 	state.manifest = input.manifest;
+	externalThemes = input.externalThemes ?? [];
 	persistToSettings = input.persist;
 }
 
@@ -158,7 +161,7 @@ export async function setTheme(
 	preference: ThemeModePreference | undefined,
 	options: SetThemeOptions = {}
 ): Promise<void> {
-	const manifest = resolveManifest(id);
+	const manifest = resolveManifest(id, externalThemes);
 	const prefersDark = browser ? window.matchMedia("(prefers-color-scheme: dark)").matches : true;
 	const { mode } = resolveMode(manifest, preference, prefersDark);
 

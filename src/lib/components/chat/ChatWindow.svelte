@@ -1326,7 +1326,7 @@
 				{#if canShare}
 					<button
 						type="button"
-						class="hover:bg-ui-surface-sunken ml-auto flex size-7 flex-none items-center justify-center rounded-sm text-ui-muted hover:text-ui-ink {loading
+						class="ml-auto flex size-7 flex-none items-center justify-center rounded-sm text-ui-muted hover:bg-ui-screen-2 hover:text-ui-ink {loading
 							? 'cursor-not-allowed opacity-40'
 							: ''}"
 						onclick={() => shareModal.open()}

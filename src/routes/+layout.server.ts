@@ -10,6 +10,7 @@ import {
 	resolveManifest,
 	resolveMode,
 } from "$lib/themes/registry";
+import { readExternalManifests } from "$lib/server/themes/loader";
 import type { ThemeManifest, ThemeModePreference } from "$lib/themes/types";
 import type { LayoutServerLoad } from "./$types";
 
@@ -51,12 +52,16 @@ export const load: LayoutServerLoad = async ({ locals, cookies }) => {
 		projection: { uiTheme: 1, uiThemeMode: 1 },
 	});
 
+	// External themes are discovered server-side and passed to the client via
+	// layout data, so the runtime can resolve non-builtin ids (THEMES.md §9.4).
+	const externalThemes = readExternalManifests();
+
 	// Account settings win over the cookie: the cookie is a mirror, and this
 	// load is exactly where a stale mirror gets corrected.
 	const accountTheme = settings?.uiTheme;
 	const accountMode = settings?.uiThemeMode;
 	const fallback = defaultThemeId();
-	const id = coerceThemeId(accountTheme ?? cookies.get("ui-theme"), [], fallback);
+	const id = coerceThemeId(accountTheme ?? cookies.get("ui-theme"), externalThemes, fallback);
 	const preference = accountMode ?? cookieMode(cookies.get("ui-mode"));
 	// Does the *account* express a theme? Anonymous visitors and users without
 	// a stored theme keep the pre-paint bootstrap's localStorage resolution —
@@ -80,6 +85,7 @@ export const load: LayoutServerLoad = async ({ locals, cookies }) => {
 		uiTheme: id,
 		uiThemeMode: preference,
 		uiThemeSource: themeSource,
+		externalThemes,
 		themeMeta: {
 			id: manifest.id,
 			name: manifest.name,

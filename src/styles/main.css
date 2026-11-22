@@ -220,6 +220,8 @@
 	--color-ui-user-ink: var(--ui-bubble-user-text);
 	--color-ui-accent-ink: var(--ui-accent-ink);
 	--color-ui-accent: var(--ui-accent);
+	--color-ui-accent-text: var(--ui-accent-text);
+	--color-ui-surface-raised: var(--ui-surface-raised);
 	--color-ui-overlay: var(--ui-overlay);
 }
 

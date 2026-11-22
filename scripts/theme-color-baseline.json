@@ -1,8 +1,8 @@
 {
-	"comment": "Baseline for npm run check:theme-colors. Counts are occurrences of raw color utilities in src/**/*.svelte, counted with the exact commands embedded in scripts/check-theme-colors.ts. Lower is better: after migrating utilities to --ui-* tokens, lower the numbers here in the same commit. P3: +15 neutral for the classic structure branches (pre-LCARS share button + welcome dialog markup, render only under structure=classic where the gray ramp is stock).",
+	"comment": "Baseline for npm run check:theme-colors. Counts are occurrences of raw color utilities in src/**/*.svelte, counted with the exact commands embedded in scripts/check-theme-colors.ts. Lower is better: after migrating utilities to --ui-* tokens, lower the numbers here in the same commit. P3: +15 neutral (partially offset by the P1 body class fix) for the classic structure branches (pre-LCARS share button + welcome dialog markup, render only under structure=classic where the gray ramp is stock).",
 	"date": "2026-11-22",
 	"commit": "8f63cbea (docs baseline; counts taken at Phase 0 start)",
-	"neutral": 3061,
+	"neutral": 3055,
 	"nonNeutral": 484,
 	"arbitraryHex": 212
 }

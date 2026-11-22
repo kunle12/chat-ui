@@ -3,6 +3,7 @@ import type { ManagedBy } from "$lib/types/Conversation";
 import { useAPIClient, handleResponse } from "$lib/APIClient";
 import { getConfigManager } from "$lib/utils/PublicConfig.svelte";
 import type { GETModelsResponse, FeatureFlags } from "$lib/server/api/types";
+import type { ThemeManifest } from "$lib/themes/types";
 import { base } from "$app/paths";
 
 interface ConversationListItem {
@@ -141,6 +142,7 @@ export const load = async ({ fetch, url, data }) => {
 		uiTheme: data.uiTheme,
 		uiThemeMode: data.uiThemeMode,
 		uiThemeSource: data.uiThemeSource as "account" | "default",
+		externalThemes: data.externalThemes as ThemeManifest[],
 		themeMeta: data.themeMeta as ThemeMeta,
 	};
 };

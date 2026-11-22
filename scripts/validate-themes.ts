@@ -1,30 +1,22 @@
 /**
- * Offline external-theme validation (THEMES.md §9.4, log tasks P5-04/P5-05/P5-07).
+ * Offline external-theme validation (THEMES.md §9.4, log P5-04/05/07).
  *
- * Usage: node --experimental-strip-types --no-warnings scripts/validate-themes.ts [dir]
+ * Usage: node --experimental-strip-types scripts/validate-themes.ts <dir>
  *
- * Validates every theme in $THEMES_DIR (or the given directory):
- *  - manifest schema (zod) + external-theme rules (no structure field)
- *  - token grammar (per-token types, no url())
- *  - CSS structure (scoped selectors, @layer components, no global at-rules,
- *    no !important, no url(), no html/body, no unlayered structural rules)
- *  - font files present when listed + license file when fonts are bundled
- *  - required-token completeness per declared mode
+ * Validates every theme in the given directory:
+ *  - manifest schema + external-theme rules (no structure field)
+ *  - token grammar (no url())
+ *  - CSS structure (css-tree: scoped selectors, no global at-rules, etc.)
+ *  - font files exist + license file when fonts are bundled
  */
-import { existsSync, readdirSync, readFileSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import { join } from "node:path";
-import {
-	themeManifestSchema,
-	missingRequiredTokens,
-	THEME_ID_REGEX,
-	type ThemeMode,
-} from "../src/lib/themes/types";
+import { themeManifestSchema, validateTokenValue, THEME_ID_REGEX } from "../src/lib/themes/types";
 import { validateThemeCss } from "../src/lib/server/themes/validate";
 
-const dir = process.argv[2] ?? process.env.THEMES_DIR;
+const dir = process.argv[2];
 if (!dir || !existsSync(dir)) {
-	console.error("Usage: node --experimental-strip-types scripts/validate-themes.ts <themes-dir>");
-	console.error("  (or set THEMES_DIR)");
+	console.error("Usage: node --experimental-strip-types scripts/validate-themes.ts <dir>");
 	process.exit(1);
 }
 
@@ -39,41 +31,42 @@ for (const id of readdirSync(dir).sort()) {
 	const errors: string[] = [];
 
 	// Manifest schema
-	const manifest = themeManifestSchema.safeParse(
-		JSON.parse(readFileSync(join(themePath, "theme.json"), "utf-8"))
-	);
-	if (!manifest.success) {
-		for (const issue of manifest.error.issues) {
-			errors.push(`manifest.${issue.path.join(".")}: ${issue.message}`);
-		}
-		console.log(`  ✗ manifest invalid`);
+	let manifest: ReturnType<typeof themeManifestSchema.parse> | null = null;
+	try {
+		manifest = themeManifestSchema.parse(
+			JSON.parse(readFileSync(join(themePath, "theme.json"), "utf-8"))
+		);
+	} catch (err) {
+		const issues = err instanceof Error ? err.message : String(err);
+		console.log(`  ✗ manifest invalid: ${issues}`);
+		failed = true;
 		continue;
 	}
-	const m = manifest.data;
+	const m = manifest;
 
 	// External themes may not ship structural variants (decision D2).
 	if (m.chrome?.structure) {
-		errors.push(`manifest.chrome.structure: external themes may not set "structure"`);
+		errors.push("manifest.chrome.structure: external themes may not set structure");
 	}
 
-	// Token grammar + completeness
+	// Token grammar
 	if (m.tokens) {
 		for (const mode of ["light", "dark"] as const) {
-			const tokens = m.tokens[mode] ?? {};
-			for (const [name, value] of Object.entries(tokens)) {
+			for (const [name, value] of Object.entries(m.tokens[mode] ?? {})) {
 				if (value.includes("url(")) {
 					errors.push(`tokens.${mode}.${name}: url() is rejected`);
 				}
-			}
-		}
-		const byMode: Record<ThemeMode, Record<string, string>> = {
-			light: m.tokens?.light ?? {},
-			dark: m.tokens?.dark ?? {},
-		};
-		for (const mode of m.modes) {
-			for (const name of missingRequiredTokens(m.modes, byMode)[mode]) {
-				if (byMode[mode].length > 0 || mode === m.modes[0]) {
-					errors.push(`tokens.${mode}: missing required token ${name}`);
+				if (
+					!validateTokenValue("color", value) &&
+					!validateTokenValue("length", value) &&
+					!validateTokenValue("duration", value) &&
+					!validateTokenValue("shadow", value) &&
+					!validateTokenValue("easing", value) &&
+					!validateTokenValue("screenImage", value) &&
+					!validateTokenValue("labelTransform", value) &&
+					!validateTokenValue("fontStack", value)
+				) {
+					errors.push(`tokens.${mode}.${name}: value does not match any token grammar`);
 				}
 			}
 		}

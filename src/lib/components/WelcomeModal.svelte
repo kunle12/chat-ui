@@ -29,7 +29,7 @@
 						: `This is a private AI assistant — ${publicConfig.PUBLIC_APP_NAME}.`}
 				</p>
 				<button
-					class="text-ui-accent-text mt-1 w-full rounded-md bg-ui-accent py-2.5 text-sm font-semibold hover:opacity-90"
+					class="mt-1 w-full rounded-md bg-ui-accent py-2.5 text-sm font-semibold text-ui-accent-text hover:opacity-90"
 					onclick={close}
 				>
 					Start chatting

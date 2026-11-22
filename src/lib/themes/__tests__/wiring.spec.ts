@@ -88,7 +88,6 @@ const RESERVED: Readonly<Record<string, string>> = Object.freeze({
 	"--ui-link": "UI-chrome links outside prose (P3/P4 chrome variants)",
 	// Text-on-fill for the semantic states — consumed by the D14 sweep
 	// (high-traffic non-neutral surfaces) in P4-07.
-	"--ui-accent-text": "office send-button / accent fills (P4-07)",
 	"--ui-danger": "semantic danger surfaces (D14 sweep, P4-07)",
 	"--ui-danger-text": "semantic danger surfaces (D14 sweep, P4-07)",
 	"--ui-warning-text": "semantic warning surfaces (D14 sweep, P4-07)",

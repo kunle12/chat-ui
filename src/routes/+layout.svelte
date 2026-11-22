@@ -34,7 +34,7 @@
 		setTheme,
 		getActiveTheme,
 	} from "$lib/themes/themes.svelte";
-	import { resolveManifest } from "$lib/themes/registry";
+	import { resolveManifest, resolveChrome, resolveLabel } from "$lib/themes/registry";
 	import type { ThemeModePreference } from "$lib/themes/types";
 	import { createActiveGenerationsStore } from "$lib/stores/activeGenerations.svelte";
 	import { createNotificationsStore } from "$lib/stores/notifications.svelte";
@@ -155,6 +155,7 @@
 		preference: data.uiThemeMode,
 		mode: data.uiThemeMode === "light" ? "light" : "dark",
 		manifest: resolveManifest(data.uiTheme),
+		externalThemes: data.externalThemes,
 		persist: (id, preference) => {
 			void settings.set({ uiTheme: id, uiThemeMode: preference });
 		},
@@ -202,7 +203,31 @@
 		}
 	}
 
-	const themeMeta = $derived(data.themeMeta);
+	// Chrome/labels/structure derive from the RUNTIME manifest, so a theme
+	// switch via setTheme() is coherent without a reload (finding M2). The
+	// SSR themeMeta only seeds the pre-hydration frame.
+	const themeMeta = $derived.by(() => {
+		const m = getActiveTheme().manifest;
+		const chrome = resolveChrome(m);
+		const fallback = data.themeMeta.labels;
+		return {
+			id: m.id,
+			name: m.name,
+			modes: m.modes,
+			chrome,
+			labels: {
+				modelsReady: m.labels.modelsReady ?? fallback.modelsReady,
+				modelsWaiting: m.labels.modelsWaiting ?? fallback.modelsWaiting,
+				streaming: m.labels.streaming ?? fallback.streaming,
+				idle: m.labels.idle ?? fallback.idle,
+				models: m.labels.models ?? fallback.models,
+				modelsOne: m.labels.modelsOne ?? fallback.modelsOne,
+				mcp: m.labels.mcp ?? fallback.mcp,
+				mcpOff: m.labels.mcpOff ?? fallback.mcpOff,
+				introTagline: m.labels.introTagline ?? fallback.introTagline,
+			},
+		};
+	});
 
 	const slackMcpSync = $derived(Boolean(data.slackMcpSync));
 	$effect(() => {
