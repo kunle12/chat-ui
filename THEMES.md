@@ -2,6 +2,10 @@
 
 Status: **proposal** · Author: engineering · Target release: next minor
 
+> Execution tracking (phase checklists, decisions, verification):
+> [`THEMES_IMPLEMENTATION_LOG.md`](./THEMES_IMPLEMENTATION_LOG.md). Update the log in the same
+> commit as the work it describes.
+
 This document specifies how chat-ui moves from a single hard-coded LCARS look to a
 **portable, user-selectable theme system**, and lays out the implementation plan for the
 first three themes:

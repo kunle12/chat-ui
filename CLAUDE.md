@@ -160,6 +160,10 @@ Multi-theme support (user-selectable themes + portable theme plugins) is designe
 [`THEMES.md`](./THEMES.md). When touching UI, keep it theme-agnostic: prefer the
 `--ui-*` tokens and `.ui-*` primitives over new hard-coded colors.
 
+Implementation progress and per-phase checklists are tracked in
+[`THEMES_IMPLEMENTATION_LOG.md`](./THEMES_IMPLEMENTATION_LOG.md). Follow its agent protocol and
+update the log in the same commit as the work.
+
 ## Code Conventions
 
 - TypeScript strict mode enabled
