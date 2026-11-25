@@ -8,7 +8,6 @@
 	import { page } from "$app/state";
 
 	import { error } from "$lib/stores/errors";
-	import { loading } from "$lib/stores/loading";
 	import { createSettingsStore } from "$lib/stores/settings";
 	import { setHapticsEnabled } from "$lib/utils/haptics";
 	import { syncMcpSelection } from "$lib/stores/mcpSelectionSync";
@@ -29,6 +28,8 @@
 	import { requireAuthUser } from "$lib/utils/auth";
 	import { startGuardLogoutListener } from "$lib/utils/guardLogout";
 	import { createConversationsStore } from "$lib/stores/conversations.svelte";
+import IconCornerUpLeft from "~icons/lucide/corner-up-left";
+import { returnToWorkspace } from "$lib/utils/workspace";
 	import {
 		initThemeRuntime,
 		reconcileFromServer,
@@ -46,6 +47,17 @@
 
 	const publicConfig = data.publicConfig;
 	const client = useAPIClient();
+
+	// Origin of the workspace console (kunle_workspace). Set → the bottom rail
+	// grows a WORKSPACE token that closes the console-spawned app tab (or
+	// navigates back when the close is refused for a natively-opened tab).
+	const workspaceOrigin = publicConfig.PUBLIC_WORKSPACE_ORIGIN;
+
+	function handleWorkspaceClick(e: MouseEvent) {
+		if (e.button !== 0) return;
+		e.preventDefault();
+		returnToWorkspace(workspaceOrigin);
+	}
 
 	const convsStore = createConversationsStore();
 	// Cross-conversation generation liveness: the watcher (mounted below) feeds both.
@@ -458,13 +470,6 @@
 					</span>
 				</div>
 				<div
-					class="ui-cap-up flex flex-1 items-center justify-center bg-ui-sky px-4 text-ui-on-sky"
-				>
-					<span class="ui-label font-bold">
-						{$loading ? themeMeta.labels.streaming : themeMeta.labels.idle}
-					</span>
-				</div>
-				<div
 					class="ui-cap-up flex flex-[1.4] items-center justify-center bg-ui-peach px-4 text-ui-on-peach"
 				>
 					<span class="ui-label font-bold">
@@ -485,6 +490,17 @@
 							: themeMeta.labels.mcpOff}
 					</span>
 				</div>
+				{#if workspaceOrigin}
+					<a
+						href={workspaceOrigin}
+						onclick={handleWorkspaceClick}
+						class="ui-cap-up flex flex-[0.9] items-center justify-center gap-2 bg-ui-sky px-4 text-ui-on-sky hover:brightness-110"
+						title="Close this tab and return to the workspace console"
+					>
+						<span class="ui-label font-bold">Workspace</span>
+						<IconCornerUpLeft class="size-3.5 flex-none" />
+					</a>
+				{/if}
 			</div>
 		{/if}
 	</div>

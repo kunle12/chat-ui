@@ -31,9 +31,7 @@
 	import { enabledServersCount } from "$lib/stores/mcpServers";
 	import { isPro } from "$lib/stores/isPro";
 	import IconPro from "$lib/components/icons/IconPro.svelte";
-	import IconCornerUpLeft from "~icons/lucide/corner-up-left";
 	import MCPServerManager from "./mcp/MCPServerManager.svelte";
-	import { returnToWorkspace } from "$lib/utils/workspace";
 
 	const publicConfig = usePublicConfig();
 	const client = useAPIClient();
@@ -55,18 +53,6 @@
 	}: Props = $props();
 
 	let hasMore = $state(true);
-
-	// Set (e.g. to the kunle_workspace console origin) to show the return pill.
-	const workspaceOrigin = publicConfig.PUBLIC_WORKSPACE_ORIGIN;
-
-	function handleWorkspaceClick(e: MouseEvent) {
-		// The anchor's href stays as the no-JS / middle-click fallback; a normal
-		// click closes the console-spawned tab (or navigates back to the console
-		// when the close is refused for a natively-opened tab).
-		if (e.button !== 0) return;
-		e.preventDefault();
-		returnToWorkspace(workspaceOrigin);
-	}
 
 	function handleNewChatClick(e: MouseEvent) {
 		isAborted.set(true);
@@ -170,37 +156,22 @@
 	});
 </script>
 
-<div class="sticky top-0 z-10 flex flex-none flex-col gap-1.5 px-2 pt-3 pb-3 max-sm:pt-0">
-	<div class="flex items-center gap-2">
-		<a
-			class="ui-cap-r flex h-10 min-w-0 flex-1 items-center gap-2 bg-ui-peach px-3 text-ui-on-peach select-none"
-			href="{publicConfig.PUBLIC_ORIGIN}{base}/"
-		>
-			<Logo classNames="size-4 flex-none opacity-80 mix-blend-multiply dark:mix-blend-normal" />
-			<span class="ui-label truncate text-[0.6875rem] font-bold">
-				{publicConfig.PUBLIC_APP_NAME}
-			</span>
-		</a>
-		<a
-			href={`${base}/`}
-			onclick={handleNewChatClick}
-			class="ui-btn h-10 flex-none bg-ui-amber px-3.5 text-ui-on-amber shadow-xs hover:shadow-none"
-			title="Ctrl/Cmd + Shift + O"
-		>
-			+ New Chat
-		</a>
-	</div>
-	{#if workspaceOrigin}
-		<a
-			href={workspaceOrigin}
-			onclick={handleWorkspaceClick}
-			class="ui-cap-r flex h-7 flex-none items-center gap-2 bg-ui-sky/25 px-3 text-ui-on-sky hover:bg-ui-sky/40"
-			title="Close this tab and return to the workspace console"
-		>
-			<span class="ui-label min-w-0 flex-1 truncate text-[0.625rem]">Workspace</span>
-			<IconCornerUpLeft class="size-3 flex-none" />
-		</a>
-	{/if}
+<div class="sticky top-0 z-10 flex flex-none items-center gap-2 px-2 pt-3 pb-3 max-sm:pt-0">
+	<a
+		class="ui-cap-r flex h-10 min-w-0 flex-1 items-center gap-2 bg-ui-peach px-3 text-ui-on-peach select-none"
+		href="{publicConfig.PUBLIC_ORIGIN}{base}/"
+	>
+		<Logo classNames="size-4 flex-none opacity-80 mix-blend-multiply dark:mix-blend-normal" />
+		<span class="ui-label truncate text-[0.6875rem] font-bold">{publicConfig.PUBLIC_APP_NAME}</span>
+	</a>
+	<a
+		href={`${base}/`}
+		onclick={handleNewChatClick}
+		class="ui-btn h-10 flex-none bg-ui-amber px-3.5 text-ui-on-amber shadow-xs hover:shadow-none"
+		title="Ctrl/Cmd + Shift + O"
+	>
+		+ New Chat
+	</a>
 </div>
 
 <div
