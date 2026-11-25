@@ -87,23 +87,50 @@
 
 	const nModels: number = page.data.models.filter((el: Model) => !el.unlisted).length;
 
+	let loadingMore = $state(false);
+
 	async function handleVisible() {
-		p++;
-		const newConvs = await client.conversations
-			.get({
-				query: {
-					p,
-				},
-			})
-			.then(handleResponse)
-			.then((r) => r.conversations)
-			.catch((): ConvSidebar[] => []);
-
-		if (newConvs.length === 0) {
-			hasMore = false;
+		if (loadingMore) {
+			// The loader fires every 250ms while visible; never stack page fetches.
+			return;
 		}
+		loadingMore = true;
+		try {
+			const page = p + 1;
+			const newConvs = await client.conversations
+				.get({
+					query: {
+						p: page,
+					},
+				})
+				.then(handleResponse)
+				.then((r) => r.conversations)
+				.catch((err) => {
+					// A failed page fetch (transient 401/403/500) must not latch
+					// hasMore off forever — the loader re-fires while visible.
+					console.error("Failed to load more conversations", err);
+					return null;
+				});
 
-		conversations = [...conversations, ...newConvs];
+			if (newConvs === null) {
+				return;
+			}
+
+			if (newConvs.length === 0) {
+				hasMore = false;
+				return;
+			}
+
+			p = page;
+			// Dedupe: a concurrent reset (data invalidation) can race the append.
+			const known = new Set(conversations.map((c: ConvSidebar) => String(c.id)));
+			conversations = [
+				...conversations,
+				...newConvs.filter((c: ConvSidebar) => !known.has(String(c.id))),
+			];
+		} finally {
+			loadingMore = false;
+		}
 	}
 
 	$effect(() => {
